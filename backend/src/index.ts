@@ -1,56 +1,70 @@
-// backend/src/index.ts
-console.log('🚀 Starting backend...');
-
 import express from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
+import http from 'http';
+import { WebSocketService } from './services/websocket.service';
 
-console.log('✅ Imports OK');
+// Charger les variables d'environnement AVANT tout
+dotenv.config();
+
+console.log('🔧 Environment loaded:', {
+  PORT: process.env.PORT,
+  CORS_ORIGIN: process.env.CORS_ORIGIN,
+  NODE_ENV: process.env.NODE_ENV
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-console.log(`🔧 Port configured: ${PORT}`);
-
-// ⚠️ IMPORTANT : CORS doit être AVANT les routes
+// Middleware
 app.use(cors({
-  origin: 'http://localhost:5173',  // Frontend URL
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true
 }));
-
-console.log('✅ CORS configured for http://localhost:5173');
-
 app.use(express.json());
 
-console.log('✅ Middlewares configured');
+// Créer le serveur HTTP
+const httpServer = http.createServer(app);
+
+// Initialiser WebSocket
+const wsService = new WebSocketService(httpServer);
 
 // Routes
-app.get('/', (req, res) => {
-  console.log('📥 GET /');
-  res.json({ message: '🐋 Whale Tracker API' });
-});
-
 app.get('/health', (req, res) => {
-  console.log('📥 GET /health');
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    message: '🐋 Whale Tracker Backend is running!'
+    uptime: process.uptime(),
+    websocket: {
+      connectedClients: wsService.getConnectedClientsCount()
+    }
   });
 });
 
-console.log('✅ Routes configured');
+// Route de test pour déclencher une whale transaction
+app.get('/api/test-whale', (req, res) => {
+  const testTransaction = {
+    hash: `0x${Math.random().toString(16).substring(2, 66)}`,
+    blockNumber: Math.floor(Math.random() * 1000000) + 18000000,
+    from: `0x${Math.random().toString(16).substring(2, 42)}`,
+    to: `0x${Math.random().toString(16).substring(2, 42)}`,
+    valueEth: Math.random() * 1000 + 100,
+    valueUsd: (Math.random() * 1000 + 100) * 2500,
+    timestamp: Date.now()
+  };
 
-// Start server
-app.listen(PORT, () => {
-  console.log('');
-  console.log('=================================');
-  console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`✅ Health check: http://localhost:${PORT}/health`);
-  console.log(`✅ CORS enabled for: http://localhost:5173`);
-  console.log('=================================');
-  console.log('');
+  wsService.broadcastWhaleTransaction(testTransaction);
+
+  res.json({
+    success: true,
+    message: 'Test whale transaction broadcasted',
+    transaction: testTransaction
+  });
 });
 
-console.log('🔄 Waiting for server to start...');
+// Démarrer le serveur
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket server ready`);
+  console.log(`🌍 CORS enabled for: ${process.env.CORS_ORIGIN}`);
+});
