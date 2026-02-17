@@ -30,7 +30,7 @@ function App() {
         <p>
           <strong>👥 Connected clients:</strong> {connectedClients}
         </p>
-        <button 
+        {/* <button 
           onClick={sendPing}
           style={{ 
             padding: '10px 20px', 
@@ -39,8 +39,8 @@ function App() {
           }}
         >
           🏓 Test Ping
-        </button>
-        <button 
+        </button> */}
+        {/* <button 
           onClick={triggerTestWhale}
           style={{ 
             padding: '10px 20px', 
@@ -52,7 +52,7 @@ function App() {
           }}
         >
           🐋 Trigger Test Whale
-        </button>
+        </button> */}
       </div>
 
       {/* Section 2: Transactions List */}

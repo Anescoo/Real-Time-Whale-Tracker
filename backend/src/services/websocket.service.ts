@@ -11,6 +11,8 @@ export interface Transaction {
   timestamp: number;
 }
 
+console.log();
+
 export class WebSocketService {
   private io: Server;
   private connectedClients: Set<string> = new Set();
