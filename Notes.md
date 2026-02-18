@@ -55,3 +55,26 @@ docker-compose exec backend npm run seed
 
 # Backup de la DB
 docker-compose exec postgres pg_dump -U postgres whale_tracker > backup.sql
+
+---
+
+# 1. Arrêter tous les conteneurs
+docker-compose down
+
+# 2. Supprimer les volumes (données persistantes)
+docker-compose down -v
+
+# 3. Supprimer les conteneurs arrêtés
+docker-compose rm -f
+
+# 4. Supprimer les images liées au projet
+docker-compose down --rmi all
+
+# 5. Rebuild SANS cache
+docker-compose build --no-cache
+
+# 6. Relancer les services
+docker-compose up -d
+
+# 7. Suivre les logs en temps réel
+docker-compose logs -f

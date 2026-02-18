@@ -18,10 +18,19 @@ export class EthereumService {
   private whaleThreshold: number;
   private ethPriceUsd: number = 0;
   private processedTxs: Set<string> = new Set();
+  
+  // ✅ AJOUT : Stockage des transactions récentes
+  private recentTransactions: WhaleTransaction[] = [];
+  
   private stats = {
     blocksProcessed: 0,
     whalesDetected: 0,
     totalVolume: 0,
+    // ✅ AJOUT : Stats complètes pour l'API
+    totalVolumeUsd: 0,
+    averageTransactionEth: 0,
+    largestTransactionEth: 0,
+    last24hCount: 0,
   };
 
   constructor(wsService: WebSocketService) {
@@ -53,7 +62,7 @@ export class EthereumService {
 
     // Listen to new blocks
     console.log("🔗 Setting up block listener...");
-    
+
     this.alchemy.ws.on("block", async (blockNumber: number) => {
       console.log(`\n📦 NEW BLOCK: ${blockNumber}`);
       await this.processBlock(blockNumber);
@@ -63,7 +72,7 @@ export class EthereumService {
     const latestBlock = await this.alchemy.core.getBlockNumber();
     console.log(`✅ Connected to Ethereum! Latest block: ${latestBlock}`);
     console.log("✅ Monitoring active!");
-    
+
     // Process current block immediately
     await this.processBlock(latestBlock);
   }
@@ -76,6 +85,9 @@ export class EthereumService {
       const data = await response.json();
       this.ethPriceUsd = data.ethereum.usd;
       console.log(`💰 ETH price updated: $${this.ethPriceUsd.toFixed(2)}`);
+      
+      // ✅ AJOUT : Broadcast du prix ETH
+      this.wsService.broadcastEthPrice(this.ethPriceUsd);
     } catch (error) {
       console.error("❌ Failed to fetch ETH price:", error);
       this.ethPriceUsd = 2000; // Fallback
@@ -85,7 +97,7 @@ export class EthereumService {
   private async processBlock(blockNumber: number) {
     try {
       console.log(`⏳ Fetching block ${blockNumber}...`);
-      
+
       const blockWithTxs = await this.alchemy.core.getBlockWithTransactions(
         blockNumber
       );
@@ -111,7 +123,7 @@ export class EthereumService {
 
         const valueEth = parseFloat(Utils.formatEther(tx.value));
 
-        // Log large transactions (>10 ETH)
+        // Log large transactions (>100 ETH)
         if (valueEth >= 100) {
           largeTransactions++;
           console.log(`   💎 Large tx: ${valueEth.toFixed(2)} ETH (${tx.hash.slice(0, 10)}...)`);
@@ -123,24 +135,45 @@ export class EthereumService {
           this.stats.whalesDetected++;
           this.stats.totalVolume += valueEth;
 
+          const valueUsd = valueEth * this.ethPriceUsd;
+          
+          // ✅ MODIFICATION : Mise à jour des stats complètes
+          this.stats.totalVolumeUsd += valueUsd;
+          this.stats.averageTransactionEth = this.stats.totalVolume / this.stats.whalesDetected;
+          
+          if (valueEth > this.stats.largestTransactionEth) {
+            this.stats.largestTransactionEth = valueEth;
+          }
+
           const whaleTransaction: WhaleTransaction = {
             hash: tx.hash,
             from: tx.from,
             to: tx.to || "Contract Creation",
             value: tx.value.toString(),
             valueEth,
-            valueUsd: valueEth * this.ethPriceUsd,
+            valueUsd,
             blockNumber,
             timestamp: Date.now(),
           };
 
           console.log(`\n🐋 ═══════════════════════════════════`);
           console.log(`🐋 WHALE DETECTED!`);
-          console.log(`   💰 Amount: ${valueEth.toFixed(2)} ETH ($${whaleTransaction.valueUsd.toLocaleString()})`);
+          console.log(`   💰 Amount: ${valueEth.toFixed(2)} ETH ($${valueUsd.toLocaleString()})`);
           console.log(`   📤 From: ${tx.from}`);
           console.log(`   📥 To: ${tx.to}`);
           console.log(`   🔗 Hash: ${tx.hash}`);
           console.log(`🐋 ═══════════════════════════════════\n`);
+
+          // ✅ AJOUT : Stocker la transaction
+          this.recentTransactions.unshift(whaleTransaction);
+          
+          // Garder uniquement les 100 dernières
+          if (this.recentTransactions.length > 100) {
+            this.recentTransactions.pop();
+          }
+
+          // ✅ AJOUT : Mettre à jour le compteur 24h
+          this.updateLast24hCount();
 
           this.processedTxs.add(tx.hash);
           this.wsService.broadcastWhaleTransaction(whaleTransaction);
@@ -168,10 +201,32 @@ export class EthereumService {
     }
   }
 
+  // ✅ NOUVELLE MÉTHODE : Mettre à jour le compteur des dernières 24h
+  private updateLast24hCount() {
+    const now = Date.now();
+    const last24h = now - 24 * 60 * 60 * 1000;
+    
+    this.stats.last24hCount = this.recentTransactions.filter(
+      (tx) => tx.timestamp >= last24h
+    ).length;
+  }
+
+  // ✅ NOUVELLE MÉTHODE : Récupérer les transactions récentes
+  public getRecentTransactions(limit: number = 20): WhaleTransaction[] {
+    return this.recentTransactions.slice(0, limit);
+  }
+
+  // ✅ MODIFICATION : Retourner les stats complètes
   public getStats() {
     return {
-      ...this.stats,
-      ethPrice: this.ethPriceUsd,
+      blocksProcessed: this.stats.blocksProcessed,
+      totalWhales: this.stats.whalesDetected,
+      totalVolumeEth: parseFloat(this.stats.totalVolume.toFixed(2)),
+      totalVolumeUsd: parseFloat(this.stats.totalVolumeUsd.toFixed(2)),
+      averageTransactionEth: parseFloat(this.stats.averageTransactionEth.toFixed(2)),
+      largestTransactionEth: parseFloat(this.stats.largestTransactionEth.toFixed(2)),
+      last24hCount: this.stats.last24hCount,
+      ethPriceUsd: this.ethPriceUsd,
       whaleThreshold: this.whaleThreshold,
       connectedClients: this.wsService.getConnectedClientsCount(),
     };

@@ -11,8 +11,6 @@ export interface Transaction {
   timestamp: number;
 }
 
-console.log();
-
 export class WebSocketService {
   private io: Server;
   private connectedClients: Set<string> = new Set();
@@ -62,12 +60,31 @@ export class WebSocketService {
     console.log(`👥 Connected clients: ${count}`);
   }
 
+  // ✅ Broadcast d'une transaction whale
   public broadcastWhaleTransaction(transaction: Transaction) {
     console.log(`🐋 Broadcasting whale transaction: ${transaction.hash}`);
     this.io.emit('whale:transaction', transaction);
   }
 
+  // ✅ NOUVELLE MÉTHODE : Broadcast du prix ETH
+  public broadcastEthPrice(price: number) {
+    console.log(`💰 Broadcasting ETH price: $${price.toFixed(2)}`);
+    this.io.emit('eth:price', price);
+  }
+
+  // ✅ NOUVELLE MÉTHODE : Broadcast des stats (optionnel)
+  public broadcastStats(stats: any) {
+    console.log(`📊 Broadcasting stats update`);
+    this.io.emit('stats:update', stats);
+  }
+
+  // ✅ Getter pour le nombre de clients connectés
   public getConnectedClientsCount(): number {
     return this.connectedClients.size;
+  }
+
+  // ✅ Getter pour l'instance Socket.IO (si besoin)
+  public getIO(): Server {
+    return this.io;
   }
 }

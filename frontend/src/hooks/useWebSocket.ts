@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 export interface Transaction {
@@ -6,8 +6,8 @@ export interface Transaction {
   blockNumber: number;
   from: string;
   to: string;
-  valueEth: number;
-  valueUsd?: number;
+  value: string;
+  valueUsd: number;
   timestamp: number;
 }
 
@@ -21,27 +21,13 @@ export interface DashboardStats {
 }
 
 export interface ConnectionState {
-  isConnected: boolean;
-  lastUpdate: number | null;
-  error: string | null;
+  status: 'connecting' | 'connected' | 'disconnected' | 'error';
+  lastUpdate: number;
+  error?: string; // ✅ AJOUT DE LA PROPRIÉTÉ ERROR
 }
 
-const MAX_TRANSACTIONS = 50;
-
-export const useWebSocket = (url: string) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectedClients, setConnectedClients] = useState(0);
+export const useWebSocket = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-
-  // ✅ État de connexion
-  const [connection, setConnection] = useState<ConnectionState>({
-    isConnected: false,
-    lastUpdate: null,
-    error: null,
-  });
-
-  // ✅ État des statistiques
   const [stats, setStats] = useState<DashboardStats>({
     totalWhales: 0,
     totalVolumeEth: 0,
@@ -50,131 +36,87 @@ export const useWebSocket = (url: string) => {
     largestTransactionEth: 0,
     last24hCount: 0,
   });
-
-  // ✅ Fonction pour calculer les stats
-  const calculateStats = useCallback((txs: Transaction[]) => {
-    if (txs.length === 0) {
-      return {
-        totalWhales: 0,
-        totalVolumeEth: 0,
-        totalVolumeUsd: 0,
-        averageTransactionEth: 0,
-        largestTransactionEth: 0,
-        last24hCount: 0,
-      };
-    }
-
-    const now = Date.now();
-    const last24h = txs.filter(tx => now - tx.timestamp < 24 * 60 * 60 * 1000);
-    
-    const totalVolumeEth = txs.reduce((sum, tx) => sum + tx.valueEth, 0);
-    const totalVolumeUsd = txs.reduce((sum, tx) => sum + (tx.valueUsd || 0), 0);
-    const largestTransactionEth = Math.max(...txs.map(tx => tx.valueEth));
-
-    return {
-      totalWhales: txs.length,
-      totalVolumeEth,
-      totalVolumeUsd,
-      averageTransactionEth: totalVolumeEth / txs.length,
-      largestTransactionEth,
-      last24hCount: last24h.length,
-    };
-  }, []);
+  const [connection, setConnection] = useState<ConnectionState>({
+    status: 'connecting',
+    lastUpdate: Date.now(),
+  });
+  const [connectedClients, setConnectedClients] = useState(0);
 
   useEffect(() => {
-    console.log('🔌 Initializing WebSocket connection to:', url);
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
 
-    const socketInstance = io(url, {
+    console.log('🔌 Connecting to:', backendUrl);
+
+    const socket: Socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
     });
 
-    // ✅ Connection
-    socketInstance.on('connect', () => {
-      console.log('✅ WebSocket connected!', socketInstance.id);
-      setIsConnected(true);
-      setConnection({
-        isConnected: true,
+    socket.on('connect', () => {
+      console.log('✅ Connected to backend! Socket ID:', socket.id);
+      setConnection({ status: 'connected', lastUpdate: Date.now() });
+      fetchInitialData();
+    });
+
+    socket.on('disconnect', () => {
+      console.warn('❌ Disconnected from backend');
+      setConnection({ status: 'disconnected', lastUpdate: Date.now() });
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Connection error:', error.message);
+      setConnection({ 
+        status: 'error', 
         lastUpdate: Date.now(),
-        error: null,
+        error: error.message // ✅ AJOUT DU MESSAGE D'ERREUR
       });
     });
 
-    // ✅ Disconnection
-    socketInstance.on('disconnect', () => {
-      console.log('❌ WebSocket disconnected');
-      setIsConnected(false);
-      setConnection(prev => ({
-        ...prev,
-        isConnected: false,
-      }));
+    socket.on('whale-transaction', (data: Transaction) => {
+      console.log('🐋 New whale:', data);
+      setTransactions((prev) => [data, ...prev].slice(0, 100));
     });
 
-    // ✅ Error handling
-    socketInstance.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error);
-      setConnection(prev => ({
-        ...prev,
-        error: error.message,
-      }));
-    });
-
-    // ✅ Clients count
-    socketInstance.on('clients:count', (count: number) => {
+    socket.on('connected-clients', (count: number) => {
       console.log('👥 Connected clients:', count);
       setConnectedClients(count);
     });
 
-    // ✅ Whale transactions
-    socketInstance.on('whale:transaction', (transaction: Transaction) => {
-      console.log('🐋 New whale transaction:', transaction);
-      
-      setTransactions((prev) => {
-        const updated = [transaction, ...prev].slice(0, MAX_TRANSACTIONS);
-        
-        // Recalculer les stats après chaque transaction
-        setStats(calculateStats(updated));
-        
-        // Mettre à jour lastUpdate
-        setConnection(prev => ({
-          ...prev,
+    socket.on('eth-price', (data: { price: number }) => {
+      console.log('💰 ETH price:', data.price);
+    });
+
+    const fetchInitialData = async () => {
+      try {
+        const whalesRes = await fetch(`${backendUrl}/api/whales?limit=20`);
+        const whalesData = await whalesRes.json();
+        setTransactions(whalesData);
+
+        const statsRes = await fetch(`${backendUrl}/api/stats`);
+        const statsData = await statsRes.json();
+        setStats(statsData);
+
+        console.log('📊 Initial data loaded:', {
+          whales: whalesData.length,
+          stats: statsData,
+        });
+      } catch (error) {
+        console.error('❌ Error fetching initial data:', error);
+        setConnection({ 
+          status: 'error', 
           lastUpdate: Date.now(),
-        }));
-        
-        return updated;
-      });
-    });
-
-    // ✅ Pong response
-    socketInstance.on('pong', (data) => {
-      console.log('🏓 Pong received:', data);
-    });
-
-    setSocket(socketInstance);
-
-    // ✅ Cleanup on unmount
-    return () => {
-      console.log('🔌 Cleaning up WebSocket connection');
-      socketInstance.disconnect();
+          error: error instanceof Error ? error.message : 'Failed to fetch initial data'
+        });
+      }
     };
-  }, [url, calculateStats]);
 
-  const sendPing = () => {
-    if (socket) {
-      console.log('🏓 Sending ping...');
-      socket.emit('ping');
-    }
-  };
+    return () => {
+      console.log('🔌 Cleaning up socket connection');
+      socket.disconnect();
+    };
+  }, []);
 
-  // ✅ Retourner TOUTES les données nécessaires
-  return {
-    socket,
-    isConnected,
-    connectedClients,
-    transactions,
-    stats,           // ← Ajouté
-    connection,      // ← Ajouté
-    sendPing
-  };
+  return { transactions, stats, connection, connectedClients };
 };
