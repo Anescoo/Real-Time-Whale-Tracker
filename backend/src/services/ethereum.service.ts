@@ -1,7 +1,7 @@
-import { Alchemy, Network, Utils } from "alchemy-sdk";
-import { WebSocketService } from "./websocket.service";
+import { Alchemy, Network, Utils } from 'alchemy-sdk';
+import { WebSocketService } from './websocket.service';
 
-interface WhaleTransaction {
+export interface WhaleTransaction {
   hash: string;
   from: string;
   to: string;
@@ -18,159 +18,144 @@ export class EthereumService {
   private whaleThreshold: number;
   private ethPriceUsd: number = 0;
   private processedTxs: Set<string> = new Set();
+  private recentTransactions: WhaleTransaction[] = [];
+
   private stats = {
     blocksProcessed: 0,
     whalesDetected: 0,
-    totalVolume: 0,
+    totalVolumeEth: 0,
+    totalVolumeUsd: 0,
+    largestTransactionEth: 0,
+    last24hCount: 0,
+    lastBlockNumber: 0,
   };
 
   constructor(wsService: WebSocketService) {
     this.wsService = wsService;
-    this.whaleThreshold = parseFloat(
-      process.env.WHALE_THRESHOLD_ETH || "100"
-    );
+    this.whaleThreshold = parseFloat(process.env.WHALE_THRESHOLD_ETH || '100');
 
     const apiKey = process.env.ALCHEMY_API_KEY;
-    if (!apiKey) {
-      throw new Error("❌ ALCHEMY_API_KEY not found in environment");
-    }
+    if (!apiKey) throw new Error('❌ ALCHEMY_API_KEY not found in environment');
 
-    this.alchemy = new Alchemy({
-      apiKey,
-      network: Network.ETH_MAINNET,
-    });
+    this.alchemy = new Alchemy({ apiKey, network: Network.ETH_MAINNET });
 
-    console.log("✅ Ethereum service initialized");
+    console.log('✅ Ethereum service initialized');
     console.log(`🐋 Whale threshold: ${this.whaleThreshold} ETH`);
   }
 
   async start() {
-    console.log("👂 Starting Ethereum monitoring...");
+    console.log('👂 Starting Ethereum monitoring...');
 
-    // Update ETH price
     await this.updateEthPrice();
     setInterval(() => this.updateEthPrice(), 5 * 60 * 1000);
 
-    // Listen to new blocks
-    console.log("🔗 Setting up block listener...");
-    
-    this.alchemy.ws.on("block", async (blockNumber: number) => {
-      console.log(`\n📦 NEW BLOCK: ${blockNumber}`);
+    this.alchemy.ws.on('block', async (blockNumber: number) => {
       await this.processBlock(blockNumber);
     });
 
-    // Test connection
     const latestBlock = await this.alchemy.core.getBlockNumber();
     console.log(`✅ Connected to Ethereum! Latest block: ${latestBlock}`);
-    console.log("✅ Monitoring active!");
-    
-    // Process current block immediately
     await this.processBlock(latestBlock);
   }
 
   private async updateEthPrice() {
     try {
       const response = await fetch(
-        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
+        'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd'
       );
       const data = await response.json();
       this.ethPriceUsd = data.ethereum.usd;
-      console.log(`💰 ETH price updated: $${this.ethPriceUsd.toFixed(2)}`);
-    } catch (error) {
-      console.error("❌ Failed to fetch ETH price:", error);
-      this.ethPriceUsd = 2000; // Fallback
+      console.log(`💰 ETH price: $${this.ethPriceUsd.toFixed(2)}`);
+      this.wsService.broadcastEthPrice(this.ethPriceUsd);
+    } catch {
+      this.ethPriceUsd = this.ethPriceUsd || 2000;
+    }
+  }
+
+  private async fetchBlockWithRetry(blockNumber: number, maxRetries = 3) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.alchemy.core.getBlockWithTransactions(blockNumber);
+      } catch (err) {
+        if (attempt === maxRetries) throw err;
+        const delay = 1000 * Math.pow(2, attempt); // 1s → 2s → 4s
+        console.warn(`⚠️  Block #${blockNumber} fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay / 1000}s…`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
     }
   }
 
   private async processBlock(blockNumber: number) {
     try {
-      console.log(`⏳ Fetching block ${blockNumber}...`);
-      
-      const blockWithTxs = await this.alchemy.core.getBlockWithTransactions(
-        blockNumber
-      );
-
-      if (!blockWithTxs || !blockWithTxs.transactions) {
-        console.log(`⚠️ Block ${blockNumber} has no transactions`);
-        return;
-      }
+      const block = await this.fetchBlockWithRetry(blockNumber);
+      if (!block?.transactions) return;
 
       this.stats.blocksProcessed++;
-      const txCount = blockWithTxs.transactions.length;
-      console.log(`📦 Block ${blockNumber}: ${txCount} transactions`);
+      this.stats.lastBlockNumber = blockNumber;
 
-      let whalesInBlock = 0;
-      let largeTransactions = 0;
+      console.log(`📦 Block #${blockNumber} | ${block.transactions.length} txs scanned`);
 
-      for (const tx of blockWithTxs.transactions) {
-        // Skip already processed
+      for (const tx of block.transactions) {
         if (this.processedTxs.has(tx.hash)) continue;
-
-        // Skip 0 value
-        if (!tx.value || tx.value.toString() === "0") continue;
+        if (!tx.value || tx.value.toString() === '0') continue;
 
         const valueEth = parseFloat(Utils.formatEther(tx.value));
+        if (valueEth < this.whaleThreshold) continue;
 
-        // Log large transactions (>10 ETH)
-        if (valueEth >= 100) {
-          largeTransactions++;
-          console.log(`   💎 Large tx: ${valueEth.toFixed(2)} ETH (${tx.hash.slice(0, 10)}...)`);
+        this.stats.whalesDetected++;
+        this.stats.totalVolumeEth += valueEth;
+        this.stats.totalVolumeUsd += valueEth * this.ethPriceUsd;
+        if (valueEth > this.stats.largestTransactionEth) {
+          this.stats.largestTransactionEth = valueEth;
         }
 
-        // Detect whales
-        if (valueEth >= this.whaleThreshold) {
-          whalesInBlock++;
-          this.stats.whalesDetected++;
-          this.stats.totalVolume += valueEth;
+        const whaleTx: WhaleTransaction = {
+          hash: tx.hash,
+          from: tx.from,
+          to: tx.to || 'Contract Creation',
+          value: tx.value.toString(),
+          valueEth,
+          valueUsd: valueEth * this.ethPriceUsd,
+          blockNumber,
+          timestamp: Date.now(),
+        };
 
-          const whaleTransaction: WhaleTransaction = {
-            hash: tx.hash,
-            from: tx.from,
-            to: tx.to || "Contract Creation",
-            value: tx.value.toString(),
-            valueEth,
-            valueUsd: valueEth * this.ethPriceUsd,
-            blockNumber,
-            timestamp: Date.now(),
-          };
+        this.recentTransactions.unshift(whaleTx);
+        if (this.recentTransactions.length > 100) this.recentTransactions.pop();
 
-          console.log(`\n🐋 ═══════════════════════════════════`);
-          console.log(`🐋 WHALE DETECTED!`);
-          console.log(`   💰 Amount: ${valueEth.toFixed(2)} ETH ($${whaleTransaction.valueUsd.toLocaleString()})`);
-          console.log(`   📤 From: ${tx.from}`);
-          console.log(`   📥 To: ${tx.to}`);
-          console.log(`   🔗 Hash: ${tx.hash}`);
-          console.log(`🐋 ═══════════════════════════════════\n`);
+        this.stats.last24hCount = this.recentTransactions.filter(
+          (t) => t.timestamp >= Date.now() - 86_400_000
+        ).length;
 
-          this.processedTxs.add(tx.hash);
-          this.wsService.broadcastWhaleTransaction(whaleTransaction);
-        }
+        this.processedTxs.add(tx.hash);
+        this.wsService.broadcastWhaleTransaction(whaleTx);
+
+        console.log(`🐋 Whale #${this.stats.whalesDetected} | ${valueEth.toFixed(2)} ETH ($${(valueEth * this.ethPriceUsd).toLocaleString('en-US', { maximumFractionDigits: 0 })}) | block #${blockNumber} | from ${tx.from.slice(0, 10)}…`);
       }
 
-      if (largeTransactions > 0) {
-        console.log(`   ✅ Found ${largeTransactions} transactions >100 ETH`);
-      }
-
-      if (whalesInBlock > 0) {
-        console.log(`🎉 ${whalesInBlock} whale(s) found in block ${blockNumber}\n`);
-      } else {
-        console.log(`   ℹ️ No whales in this block\n`);
-      }
-
-      // Clean old processed txs (keep last 1000)
       if (this.processedTxs.size > 1000) {
-        const txArray = Array.from(this.processedTxs);
-        this.processedTxs = new Set(txArray.slice(-1000));
+        this.processedTxs = new Set(Array.from(this.processedTxs).slice(-1000));
       }
 
+      this.wsService.broadcastStats(this.getStats());
     } catch (error) {
       console.error(`❌ Error processing block ${blockNumber}:`, error);
     }
   }
 
+  public getRecentTransactions(limit = 50): WhaleTransaction[] {
+    return this.recentTransactions.slice(0, limit);
+  }
+
   public getStats() {
     return {
-      ...this.stats,
+      blocksProcessed: this.stats.blocksProcessed,
+      whalesDetected: this.stats.whalesDetected,
+      totalVolumeEth: parseFloat(this.stats.totalVolumeEth.toFixed(2)),
+      totalVolumeUsd: parseFloat(this.stats.totalVolumeUsd.toFixed(2)),
+      largestTransactionEth: parseFloat(this.stats.largestTransactionEth.toFixed(2)),
+      last24hCount: this.stats.last24hCount,
+      lastBlockNumber: this.stats.lastBlockNumber,
       ethPrice: this.ethPriceUsd,
       whaleThreshold: this.whaleThreshold,
       connectedClients: this.wsService.getConnectedClientsCount(),

@@ -32,6 +32,16 @@ app.get("/health", (req, res) => {
   });
 });
 
+// API routes
+app.get("/api/stats", (_req, res) => {
+  res.json(ethService.getStats());
+});
+
+app.get("/api/whales/recent", (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 50;
+  res.json(ethService.getRecentTransactions(limit));
+});
+
 // Test endpoint to trigger fake whale
 app.get("/api/test-whale", (req, res) => {
   const fakeTransaction = {
