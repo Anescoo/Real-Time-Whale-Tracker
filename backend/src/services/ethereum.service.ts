@@ -47,7 +47,7 @@ export class EthereumService {
     console.log('👂 Starting Ethereum monitoring...');
 
     await this.updateEthPrice();
-    setInterval(() => this.updateEthPrice(), 5 * 60 * 1000);
+    setInterval(() => this.updateEthPrice(), 30 * 1000);
 
     this.alchemy.ws.on('block', async (blockNumber: number) => {
       await this.processBlock(blockNumber);
@@ -60,15 +60,22 @@ export class EthereumService {
 
   private async updateEthPrice() {
     try {
-      const response = await fetch(
-        'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd'
-      );
+      // Binance ETHEUR — no API key, real-time, reliable
+      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHEUR');
       const data = await response.json();
-      this.ethPriceUsd = data.ethereum.usd;
-      console.log(`💰 ETH price: $${this.ethPriceUsd.toFixed(2)}`);
+      this.ethPriceUsd = parseFloat(data.price);
+      console.log(`💰 ETH: €${this.ethPriceUsd.toFixed(2)}`);
       this.wsService.broadcastEthPrice(this.ethPriceUsd);
     } catch {
-      this.ethPriceUsd = this.ethPriceUsd || 2000;
+      // Fallback: CoinGecko EUR
+      try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=eur');
+        const data = await res.json();
+        this.ethPriceUsd = data.ethereum.eur;
+        this.wsService.broadcastEthPrice(this.ethPriceUsd);
+      } catch {
+        this.ethPriceUsd = this.ethPriceUsd || 1800;
+      }
     }
   }
 
@@ -130,7 +137,7 @@ export class EthereumService {
         this.processedTxs.add(tx.hash);
         this.wsService.broadcastWhaleTransaction(whaleTx);
 
-        console.log(`🐋 Whale #${this.stats.whalesDetected} | ${valueEth.toFixed(2)} ETH ($${(valueEth * this.ethPriceUsd).toLocaleString('en-US', { maximumFractionDigits: 0 })}) | block #${blockNumber} | from ${tx.from.slice(0, 10)}…`);
+        console.log(`🐋 Whale #${this.stats.whalesDetected} | ${valueEth.toFixed(2)} ETH (€${(valueEth * this.ethPriceUsd).toLocaleString('en-US', { maximumFractionDigits: 0 })}) | block #${blockNumber} | from ${tx.from.slice(0, 10)}…`);
       }
 
       if (this.processedTxs.size > 1000) {

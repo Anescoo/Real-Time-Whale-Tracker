@@ -108,7 +108,7 @@ export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick 
                   </div>
                   {usd > 0 && (
                     <div className="whale-usd">
-                      ≈ ${usd.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      ≈ €{usd.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </div>
                   )}
                   <div className="whale-addresses">

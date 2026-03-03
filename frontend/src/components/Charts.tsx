@@ -22,19 +22,15 @@ interface Point { x: number; y: number; volume: number; count: number; label: st
 
 /**
  * Monotone cubic interpolation (Fritsch-Carlson).
- * Unlike symmetric bezier, this never overshoots — flat zero regions stay flat,
- * and peaks don't create artificial sine-wave shapes.
  */
 function monotonePath(pts: Point[]): string {
   const n = pts.length;
   if (n < 2) return '';
 
-  // Slopes between consecutive points
   const d = pts.slice(0, -1).map((p, i) =>
     (pts[i + 1].y - p.y) / (pts[i + 1].x - p.x)
   );
 
-  // Tangents at each point
   const m: number[] = new Array(n).fill(0);
   m[0] = d[0];
   m[n - 1] = d[n - 2];
@@ -42,7 +38,6 @@ function monotonePath(pts: Point[]): string {
     m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
   }
 
-  // Fritsch-Carlson monotonicity conditions
   for (let i = 0; i < n - 1; i++) {
     if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
     const a = m[i] / d[i], b = m[i + 1] / d[i];
@@ -54,7 +49,6 @@ function monotonePath(pts: Point[]): string {
     }
   }
 
-  // Build cubic bezier path
   let path = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
   for (let i = 0; i < n - 1; i++) {
     const h = pts[i + 1].x - pts[i].x;
@@ -73,6 +67,119 @@ function areaPath(pts: Point[], bottom: number): string {
   return `${monotonePath(pts)} L ${last.x.toFixed(1)} ${bottom} L ${pts[0].x.toFixed(1)} ${bottom} Z`;
 }
 
+/* ── Amount-distribution histogram ── */
+const DIST_BUCKETS = [
+  { label: '100–200', min: 100,  max: 200,      color: '#06b6d4' },
+  { label: '200–500', min: 200,  max: 500,      color: '#22c55e' },
+  { label: '500–1K',  min: 500,  max: 1_000,    color: '#f59e0b' },
+  { label: '1K–5K',   min: 1_000, max: 5_000,   color: '#ef4444' },
+  { label: '5K+',     min: 5_000, max: Infinity, color: '#a855f7' },
+];
+
+function AmountHistogram({ transactions }: { transactions: Transaction[] }) {
+  const buckets = DIST_BUCKETS.map((b) => ({
+    ...b,
+    count: transactions.filter((t) => t.valueEth >= b.min && t.valueEth < b.max).length,
+  }));
+  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
+  const total    = buckets.reduce((s, b) => s + b.count, 0);
+
+  // SVG layout
+  const VW = 400, VH = 200;
+  const PT = 16, PB = 30, PL = 24, PR = 8;
+  const plotW = VW - PL - PR;
+  const plotH = VH - PT - PB;
+  const bottom = PT + plotH;
+  const slotW  = plotW / buckets.length;
+  const barW   = slotW * 0.6;
+
+  return (
+    <div className="charts-section">
+      <div className="section-header">
+        <div className="section-title">Size distribution</div>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>
+            {total} txs
+          </span>
+        </div>
+      </div>
+
+      <div className="chart-inner">
+        <svg
+          viewBox={`0 0 ${VW} ${VH}`}
+          className="line-chart-svg"
+          aria-label="Transaction size distribution"
+        >
+          {/* Guide lines */}
+          {[0.25, 0.5, 0.75, 1].map((pct, i) => (
+            <line
+              key={i}
+              x1={PL} y1={(bottom - pct * plotH).toFixed(1)}
+              x2={VW - PR} y2={(bottom - pct * plotH).toFixed(1)}
+              stroke="var(--border)"
+              strokeWidth="1"
+              strokeDasharray="3 5"
+            />
+          ))}
+
+          {/* Baseline */}
+          <line x1={PL} y1={bottom} x2={VW - PR} y2={bottom} stroke="var(--border-2)" strokeWidth="1" />
+
+          {/* Bars */}
+          {buckets.map((b, i) => {
+            const barH  = (b.count / maxCount) * plotH;
+            const barX  = PL + i * slotW + (slotW - barW) / 2;
+            const barY  = bottom - barH;
+            const labelX = PL + i * slotW + slotW / 2;
+
+            return (
+              <g key={b.label}>
+                {b.count > 0 && (
+                  <>
+                    <rect
+                      x={barX.toFixed(1)} y={barY.toFixed(1)}
+                      width={barW.toFixed(1)} height={Math.max(barH, 2).toFixed(1)}
+                      rx="3" ry="3"
+                      fill={b.color}
+                      opacity="0.75"
+                    >
+                      <title>{`${b.label} ETH: ${b.count} tx`}</title>
+                    </rect>
+                    {/* Count label on bar */}
+                    <text
+                      x={labelX.toFixed(1)}
+                      y={(barY - 4).toFixed(1)}
+                      textAnchor="middle"
+                      fill={b.color}
+                      fontSize="9"
+                      fontFamily="var(--mono)"
+                      fontWeight="600"
+                    >
+                      {b.count}
+                    </text>
+                  </>
+                )}
+                {/* X label */}
+                <text
+                  x={labelX.toFixed(1)}
+                  y={VH - 4}
+                  textAnchor="middle"
+                  fill="var(--text-3)"
+                  fontSize="9"
+                  fontFamily="var(--mono)"
+                >
+                  {b.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/* ── Volume-over-time line chart ── */
 export function Charts({ transactions, range }: Props) {
   const { buckets, maxVol } = useMemo(() => {
     const cfg = BUCKET_CONFIG[range];
@@ -112,90 +219,90 @@ export function Charts({ transactions, range }: Props) {
   const labelEvery = Math.ceil(buckets.length / 8);
 
   return (
-    <div className="charts-section">
-      <div className="section-header">
-        <div className="section-title">Volume distribution</div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent)' }}>
-            {totalVol.toFixed(0)} ETH
-          </span>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>
-            {totalTx} txs
-          </span>
+    <div className="charts-row">
+      {/* ── Line chart: volume over time ── */}
+      <div className="charts-section">
+        <div className="section-header">
+          <div className="section-title">Volume over time</div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent)' }}>
+              {totalVol.toFixed(0)} ETH
+            </span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>
+              {totalTx} txs
+            </span>
+          </div>
+        </div>
+
+        <div className="chart-inner">
+          <svg
+            viewBox={`0 0 ${VW} ${VH}`}
+            className="line-chart-svg"
+            aria-label="Whale volume distribution chart"
+          >
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+
+            {[0.25, 0.5, 0.75].map((pct, i) => (
+              <line
+                key={i}
+                x1={PL} y1={(PT + plotH - pct * plotH).toFixed(1)}
+                x2={VW - PR} y2={(PT + plotH - pct * plotH).toFixed(1)}
+                stroke="var(--border)"
+                strokeWidth="1"
+                strokeDasharray="3 5"
+              />
+            ))}
+
+            <line x1={PL} y1={bottom} x2={VW - PR} y2={bottom} stroke="var(--border-2)" strokeWidth="1" />
+
+            {totalVol > 0 && <path d={fillPath} fill="url(#areaGrad)" />}
+
+            {totalVol > 0 && (
+              <path
+                d={linePath}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
+            {points.map((p, i) =>
+              p.volume > 0 ? (
+                <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="3.5" fill="var(--accent)">
+                  <title>{`${p.volume.toFixed(1)} ETH · ${p.count} tx`}</title>
+                </circle>
+              ) : null
+            )}
+
+            {points.map((p, i) => {
+              if (i % labelEvery !== 0 && i !== points.length - 1) return null;
+              return (
+                <text
+                  key={`lbl-${i}`}
+                  x={p.x.toFixed(1)}
+                  y={VH - 4}
+                  textAnchor="middle"
+                  fill="var(--text-3)"
+                  fontSize="9"
+                  fontFamily="var(--mono)"
+                >
+                  {p.label}
+                </text>
+              );
+            })}
+          </svg>
         </div>
       </div>
 
-      <div className="chart-inner">
-        <svg
-          viewBox={`0 0 ${VW} ${VH}`}
-          className="line-chart-svg"
-          aria-label="Whale volume distribution chart"
-        >
-          <defs>
-            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
-            </linearGradient>
-          </defs>
-
-          {/* Guide lines at 25 / 50 / 75% */}
-          {[0.25, 0.5, 0.75].map((pct, i) => (
-            <line
-              key={i}
-              x1={PL} y1={(PT + plotH - pct * plotH).toFixed(1)}
-              x2={VW - PR} y2={(PT + plotH - pct * plotH).toFixed(1)}
-              stroke="var(--border)"
-              strokeWidth="1"
-              strokeDasharray="3 5"
-            />
-          ))}
-
-          {/* Baseline */}
-          <line x1={PL} y1={bottom} x2={VW - PR} y2={bottom} stroke="var(--border-2)" strokeWidth="1" />
-
-          {/* Area fill */}
-          {totalVol > 0 && <path d={fillPath} fill="url(#areaGrad)" />}
-
-          {/* Line */}
-          {totalVol > 0 && (
-            <path
-              d={linePath}
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-
-          {/* Dots with tooltip */}
-          {points.map((p, i) =>
-            p.volume > 0 ? (
-              <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="3.5" fill="var(--accent)">
-                <title>{`${p.volume.toFixed(1)} ETH · ${p.count} tx`}</title>
-              </circle>
-            ) : null
-          )}
-
-          {/* X-axis labels */}
-          {points.map((p, i) => {
-            if (i % labelEvery !== 0 && i !== points.length - 1) return null;
-            return (
-              <text
-                key={`lbl-${i}`}
-                x={p.x.toFixed(1)}
-                y={VH - 4}
-                textAnchor="middle"
-                fill="var(--text-3)"
-                fontSize="9"
-                fontFamily="var(--mono)"
-              >
-                {p.label}
-              </text>
-            );
-          })}
-        </svg>
-      </div>
+      {/* ── Histogram: transaction size distribution ── */}
+      <AmountHistogram transactions={transactions} />
     </div>
   );
 }

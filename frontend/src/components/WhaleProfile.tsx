@@ -111,7 +111,7 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
             </div>
             {ethPrice > 0 && (
               <div className="profile-stat-sub">
-                ≈ ${(usdValue / 1e6).toFixed(2)}M
+                ≈ €{(usdValue / 1e6).toFixed(2)}M
               </div>
             )}
           </div>
@@ -144,7 +144,7 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
                     </span>
                     {usd > 0 && (
                       <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-                        ${usd >= 1e6
+                        €{usd >= 1e6
                           ? `${(usd / 1e6).toFixed(2)}M`
                           : usd.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                       </span>

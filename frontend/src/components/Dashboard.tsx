@@ -6,6 +6,8 @@ import { Filters, TimeRange } from './Filters';
 import { WhalesFeed } from './WhalesFeed';
 import { TopWhales } from './TopWhales';
 import { Charts } from './Charts';
+import { WhaleFlow } from './WhaleFlow';
+import { WhaleProfile } from './WhaleProfile';
 
 const RANGE_MS: Record<TimeRange, number> = {
   '1min':  60_000,
@@ -20,8 +22,9 @@ const RANGE_MS: Record<TimeRange, number> = {
 
 export function Dashboard() {
   const { transactions, stats, ethPrice, status, connectedClients, newestHash } = useWebSocket();
-  const [range, setRange] = useState<TimeRange>('1h');
-  const [minEth, setMinEth] = useState(100);
+  const [range, setRange]               = useState<TimeRange>('1h');
+  const [minEth, setMinEth]             = useState(100);
+  const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const cutoff = RANGE_MS[range] === Infinity ? 0 : Date.now() - RANGE_MS[range];
@@ -35,7 +38,9 @@ export function Dashboard() {
       <Header status={status} connectedClients={connectedClients} ethPrice={ethPrice} />
 
       <main className="main">
-        <StatsCards stats={stats} />
+        <StatsCards stats={stats} transactions={filtered} />
+
+        <WhaleFlow transactions={filtered} />
 
         <Filters
           range={range}
@@ -45,12 +50,30 @@ export function Dashboard() {
         />
 
         <div className="content-grid">
-          <WhalesFeed transactions={filtered} ethPrice={ethPrice} newestHash={newestHash} />
-          <TopWhales transactions={filtered} ethPrice={ethPrice} />
+          <WhalesFeed
+            transactions={filtered}
+            ethPrice={ethPrice}
+            newestHash={newestHash}
+            onAddressClick={setSelectedAddr}
+          />
+          <TopWhales
+            transactions={filtered}
+            ethPrice={ethPrice}
+            onAddressClick={setSelectedAddr}
+          />
         </div>
 
         <Charts transactions={filtered} range={range} />
       </main>
+
+      {selectedAddr && (
+        <WhaleProfile
+          address={selectedAddr}
+          allTransactions={transactions}
+          ethPrice={ethPrice}
+          onClose={() => setSelectedAddr(null)}
+        />
+      )}
     </>
   );
 }

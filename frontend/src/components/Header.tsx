@@ -79,7 +79,7 @@ export function Header({ status, connectedClients, ethPrice }: Props) {
         <div className="header-right">
           {ethPrice > 0 && (
             <div className="eth-price-badge">
-              ETH ${ethPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              ETH €{ethPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
           )}
 
