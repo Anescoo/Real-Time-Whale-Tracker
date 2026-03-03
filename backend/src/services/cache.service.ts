@@ -14,7 +14,12 @@ export class CacheService {
   constructor() {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
       lazyConnect: true,
+      retryStrategy: () => null,       // don't retry — we fall back to DB
+      maxRetriesPerRequest: 0,
+      enableOfflineQueue: false,
     });
+    // Prevent "Unhandled error event" crash when Redis is unavailable
+    this.redis.on('error', () => {});
   }
 
   async connect(): Promise<void> {

@@ -122,12 +122,24 @@ export class BitcoinMonitorService {
   private async updatePrice(): Promise<void> {
     try {
       const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR');
-      const data = await res.json() as { price: string };
-      this.btcPriceEur = parseFloat(data.price);
+      const data = await res.json() as { price?: string };
+      const price = parseFloat(data.price ?? '');
+      if (isNaN(price) || price <= 0) throw new Error('Invalid Binance response');
+      this.btcPriceEur = price;
       console.log(`💰 BTC: €${this.btcPriceEur.toFixed(0)}`);
       this.wsService.broadcastToNetwork('eth:price', this.btcPriceEur, this.networkConfig.id);
     } catch {
-      this.btcPriceEur = this.btcPriceEur || 0;
+      try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur');
+        const data = await res.json() as { bitcoin?: { eur: number } };
+        const price = data.bitcoin?.eur;
+        if (price && price > 0) {
+          this.btcPriceEur = price;
+          this.wsService.broadcastToNetwork('eth:price', this.btcPriceEur, this.networkConfig.id);
+        }
+      } catch {
+        // Keep last known price
+      }
     }
   }
 

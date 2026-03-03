@@ -69,21 +69,33 @@ export class EvmMonitorService {
   }
 
   private async updatePrice(): Promise<void> {
+    // CoinGecko IDs differ from Binance symbols
+    const COINGECKO_IDS: Record<string, string> = {
+      'ETHEUR': 'ethereum', 'BTCEUR': 'bitcoin', 'MATICEUR': 'matic-network',
+      'BNBEUR': 'binancecoin', 'SOLEUR': 'solana', 'ADAEUR': 'cardano',
+    };
     try {
       const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${this.networkConfig.priceSymbol}`);
-      const data = await res.json() as { price: string };
-      this.priceNative = parseFloat(data.price);
+      const data = await res.json() as { price?: string };
+      const price = parseFloat(data.price ?? '');
+      // Binance may return an error JSON (no price field) — treat as failure
+      if (isNaN(price) || price <= 0) throw new Error('Invalid Binance response');
+      this.priceNative = price;
       console.log(`💰 ${this.networkConfig.symbol}: €${this.priceNative.toFixed(2)} [${this.networkConfig.name}]`);
       this.wsService.broadcastToNetwork('eth:price', this.priceNative, this.networkConfig.id);
     } catch {
       try {
-        const coin = this.networkConfig.priceSymbol.replace('EUR', '').toLowerCase();
+        const coin = COINGECKO_IDS[this.networkConfig.priceSymbol]
+          ?? this.networkConfig.priceSymbol.replace('EUR', '').toLowerCase();
         const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coin}&vs_currencies=eur`);
         const data = await res.json() as Record<string, { eur: number }>;
-        this.priceNative = data[coin]?.eur ?? this.priceNative;
-        this.wsService.broadcastToNetwork('eth:price', this.priceNative, this.networkConfig.id);
+        const price = data[coin]?.eur;
+        if (price && price > 0) {
+          this.priceNative = price;
+          this.wsService.broadcastToNetwork('eth:price', this.priceNative, this.networkConfig.id);
+        }
       } catch {
-        this.priceNative = this.priceNative || 0;
+        // Keep last known price
       }
     }
   }
