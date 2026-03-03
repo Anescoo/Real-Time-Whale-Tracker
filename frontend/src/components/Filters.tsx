@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { NetworkSelector, NetworkInfo } from './NetworkSelector';
 
 export type TimeRange = '1min' | '5min' | '10min' | '15min' | '1h' | '6h' | '24h' | 'all';
 
@@ -7,6 +8,13 @@ interface Props {
   minEth: number;
   onRangeChange: (r: TimeRange) => void;
   onMinEthChange: (n: number) => void;
+  networks: NetworkInfo[];
+  selectedNetwork: string;
+  onNetworkChange: (id: string) => void;
+  symbol: string;
+  sliderMin: number;
+  sliderMax: number;
+  sliderStep: number;
 }
 
 const RANGES: { label: string; value: TimeRange }[] = [
@@ -20,8 +28,11 @@ const RANGES: { label: string; value: TimeRange }[] = [
   { label: 'All', value: 'all' },
 ];
 
-export function Filters({ range, minEth, onRangeChange, onMinEthChange }: Props) {
+export function Filters({ range, minEth, onRangeChange, onMinEthChange, networks, selectedNetwork, onNetworkChange, symbol, sliderMin, sliderMax, sliderStep }: Props) {
   const [sliderVal, setSliderVal] = useState(minEth);
+
+  // Sync local slider when parent resets minEth (e.g. on network switch)
+  useEffect(() => { setSliderVal(minEth); }, [minEth]);
 
   const handleSlider = (v: number) => {
     setSliderVal(v);
@@ -30,6 +41,13 @@ export function Filters({ range, minEth, onRangeChange, onMinEthChange }: Props)
 
   return (
     <div className="filters">
+      {networks.length > 0 && (
+        <>
+          <NetworkSelector networks={networks} selected={selectedNetwork} onChange={onNetworkChange} />
+          <div className="filter-separator" />
+        </>
+      )}
+
       <span className="filters-label">Period</span>
       {RANGES.map((r) => (
         <button
@@ -48,11 +66,11 @@ export function Filters({ range, minEth, onRangeChange, onMinEthChange }: Props)
         <input
           type="range"
           className="filter-range"
-          min={100} max={2000} step={100}
+          min={sliderMin} max={sliderMax} step={sliderStep}
           value={sliderVal}
           onChange={(e) => handleSlider(Number(e.target.value))}
         />
-        <span className="filter-amount-value">{sliderVal} ETH</span>
+        <span className="filter-amount-value">{sliderVal} {symbol}</span>
       </div>
     </div>
   );

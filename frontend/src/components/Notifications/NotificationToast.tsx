@@ -5,6 +5,12 @@ interface Props {
   onClose: () => void;
 }
 
+const NETWORK_SYMBOLS: Record<string, string> = {
+  'eth-mainnet': 'ETH',
+  'bitcoin': 'BTC',
+  'polygon-mainnet': 'POL',
+};
+
 function fmtEth(eth: number) {
   if (eth >= 10000) return `${(eth / 1000).toFixed(1)}K`;
   return eth.toFixed(1);
@@ -28,7 +34,7 @@ export function NotificationToast({ toast, onClose }: Props) {
           <span style={{ fontSize: 16 }}>🐋</span>
           <div>
             <div className={`notif-toast-eth ${amountClass(toast.valueEth)}`}>
-              {fmtEth(toast.valueEth)} ETH
+              {fmtEth(toast.valueEth)} {NETWORK_SYMBOLS[toast.network] ?? 'ETH'}
             </div>
             {usd > 0 && (
               <div className="notif-toast-usd">

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ConnectionStatus } from '../hooks/useWebSocket';
 import { useNotifications } from '../hooks/useNotifications';
+import { NetworkInfo } from './NetworkSelector';
 import { NotificationBell } from './Notifications/NotificationBell';
 import { NotificationPanel } from './Notifications/NotificationPanel';
 import { NotificationToast } from './Notifications/NotificationToast';
@@ -9,6 +10,8 @@ interface Props {
   status: ConnectionStatus;
   connectedClients: number;
   ethPrice: number;
+  symbol: string;
+  networks: NetworkInfo[];
 }
 
 const statusLabel: Record<ConnectionStatus, string> = {
@@ -32,7 +35,7 @@ function useTheme() {
   return { theme, toggle };
 }
 
-export function Header({ status, connectedClients, ethPrice }: Props) {
+export function Header({ status, connectedClients, ethPrice, symbol, networks }: Props) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -72,14 +75,13 @@ export function Header({ status, connectedClients, ethPrice }: Props) {
           <span style={{ fontSize: 22 }}>🐋</span>
           <div>
             <h1>Whale Tracker</h1>
-            <span>Ethereum mainnet · real-time</span>
           </div>
         </div>
 
         <div className="header-right">
           {ethPrice > 0 && (
             <div className="eth-price-badge">
-              ETH €{ethPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              {symbol} €{ethPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
           )}
 
@@ -137,6 +139,7 @@ export function Header({ status, connectedClients, ethPrice }: Props) {
                   onRequestDesktop={requestDesktopPermission}
                   onMarkAllRead={markAllRead}
                   onClearAll={clearAll}
+                  networks={networks}
                 />
               </div>
             )}

@@ -12,6 +12,7 @@ function fmt(n: number, decimals = 0) {
 }
 
 export function StatsCards({ stats, transactions }: Props) {
+  const sym = stats.symbol ?? 'ETH';
   const filteredCount  = transactions.length;
   const filteredVolEth = transactions.reduce((s, t) => s + t.valueEth, 0);
   const filteredVolEur = transactions.reduce((s, t) => s + (t.valueUsd > 0 ? t.valueUsd : t.valueEth * stats.ethPrice), 0);
@@ -29,13 +30,13 @@ export function StatsCards({ stats, transactions }: Props) {
     },
     {
       label: 'Total volume',
-      value: `${fmt(filteredVolEth, 1)} ETH`,
+      value: `${fmt(filteredVolEth, 1)} ${sym}`,
       sub: filteredVolEur > 0 ? `€${fmt(filteredVolEur)}` : '—',
       accent: '#22c55e',
     },
     {
       label: 'Largest transaction',
-      value: `${fmt(filteredLargest, 1)} ETH`,
+      value: `${fmt(filteredLargest, 1)} ${sym}`,
       sub: filteredLargest > 0 && stats.ethPrice > 0
         ? `€${fmt(filteredLargestEur)}`
         : '—',
@@ -44,7 +45,7 @@ export function StatsCards({ stats, transactions }: Props) {
     {
       label: 'Blocks scanned',
       value: fmt(stats.blocksProcessed),
-      sub: `Threshold: ${stats.whaleThreshold} ETH`,
+      sub: `Threshold: ${stats.whaleThreshold} ${sym}`,
       accent: '#a855f7',
     },
   ];

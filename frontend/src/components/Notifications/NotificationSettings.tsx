@@ -1,17 +1,20 @@
 import { NotificationSettings as Settings } from '../../hooks/useNotifications';
+import { NetworkInfo } from '../NetworkSelector';
 
 interface Props {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   onRequestDesktop: () => Promise<boolean>;
   onBack: () => void;
+  networks: NetworkInfo[];
 }
 
 const desktopPermission = () =>
   'Notification' in window ? Notification.permission : 'denied';
 
-export function NotificationSettings({ settings, onChange, onRequestDesktop, onBack }: Props) {
+export function NotificationSettings({ settings, onChange, onRequestDesktop, onBack, networks }: Props) {
   const perm = desktopPermission();
+  const activeNetworks = networks.filter((n) => n.provider !== 'coming_soon');
 
   const handleDesktopToggle = async () => {
     if (!settings.desktop) {
@@ -93,25 +96,30 @@ export function NotificationSettings({ settings, onChange, onRequestDesktop, onB
           </button>
         </div>
 
-        {/* Min ETH */}
+        {/* Per-network thresholds */}
         <div className={`notif-setting-row notif-setting-col${!settings.enabled ? ' notif-setting-disabled' : ''}`}>
-          <div>
-            <div className="notif-setting-label">Minimum threshold</div>
-            <div className="notif-setting-desc">Only notify above this amount</div>
-          </div>
-          <div className="notif-slider-row">
-            <input
-              type="range"
-              className="filter-range"
-              min={100}
-              max={2000}
-              step={100}
-              value={settings.minEth}
-              onChange={(e) => onChange({ minEth: Number(e.target.value) })}
-              disabled={!settings.enabled}
-            />
-            <span className="filter-amount-value">{settings.minEth} ETH</span>
-          </div>
+          <div className="notif-setting-label" style={{ marginBottom: 8 }}>Thresholds by network</div>
+          {activeNetworks.map((net) => {
+            const val = settings.minThresholds[net.id] ?? net.threshold;
+            return (
+              <div key={net.id} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: net.color, fontWeight: 600 }}>{net.name}</span>
+                  <span className="filter-amount-value">{val} {net.symbol}</span>
+                </div>
+                <input
+                  type="range"
+                  className="filter-range"
+                  min={net.sliderMin}
+                  max={net.sliderMax}
+                  step={net.sliderStep}
+                  value={val}
+                  onChange={(e) => onChange({ minThresholds: { ...settings.minThresholds, [net.id]: Number(e.target.value) } })}
+                  disabled={!settings.enabled}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

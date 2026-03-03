@@ -3,9 +3,10 @@ import http from "http";
 import cors from "cors";
 import dotenv from "dotenv";
 import { WebSocketService } from "./services/websocket.service";
-import { EthereumService } from "./services/ethereum.service";
+import { NetworkManagerService } from "./services/network-manager.service";
 import { DatabaseService } from "./services/database.service";
 import { CacheService } from "./services/cache.service";
+import { NETWORKS_LIST } from "./config/networks";
 
 // Load environment variables
 dotenv.config();
@@ -21,67 +22,48 @@ app.use(express.json());
 const dbService = new DatabaseService();
 const cacheService = new CacheService();
 const wsService = new WebSocketService(server);
-const ethService = new EthereumService(wsService, dbService, cacheService);
+const networkManager = new NetworkManagerService(wsService, dbService, cacheService);
+
+// Wire NetworkManager into WebSocketService (avoids circular dependency at construction)
+wsService.setNetworkManager(networkManager);
 
 // Routes
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
     message: "🐋 Whale Tracker Backend is running!",
-    websocket: {
-      connectedClients: wsService.getConnectedClientsCount(),
-    },
-    ethereum: ethService.getStats(),
+    activeNetworks: networkManager.getActiveNetworks(),
   });
 });
 
-// API routes
-app.get("/api/stats", (_req, res) => {
-  res.json(ethService.getStats());
+// List all available networks (for frontend dropdown)
+app.get("/api/networks", (_req, res) => {
+  res.json(NETWORKS_LIST);
 });
 
+// Get recent whale transactions for a given network
 app.get("/api/whales/recent", async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
+  const network = (req.query.network as string) || "eth-mainnet";
 
   // 1. Try Redis cache (fastest)
-  const cached = await cacheService.getRecentTransactions();
+  const cached = await cacheService.getRecentTransactions(network);
   if (cached.length > 0) {
     res.json(cached.slice(0, limit));
     return;
   }
 
   // 2. Try PostgreSQL
-  const fromDb = await dbService.getRecentTransactions(limit);
+  const fromDb = await dbService.getRecentTransactions(limit, network);
   if (fromDb.length > 0) {
     res.json(fromDb);
     return;
   }
 
-  // 3. Fallback: in-memory (server just started, DB empty)
-  res.json(ethService.getRecentTransactions(limit));
-});
-
-// Test endpoint to trigger fake whale
-app.get("/api/test-whale", (req, res) => {
-  const fakeTransaction = {
-    hash: `0x${Math.random().toString(16).substring(2, 66)}`,
-    from: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-    to: "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
-    value: "1500000000000000000000", // 1500 ETH
-    valueEth: 1500,
-    valueUsd: 1500 * 2500,
-    blockNumber: 12345678,
-    timestamp: Date.now(),
-  };
-
-  wsService.broadcastWhaleTransaction(fakeTransaction);
-
-  res.json({
-    success: true,
-    message: "Fake whale transaction broadcasted",
-    transaction: fakeTransaction,
-  });
+  // 3. Fallback: in-memory from running monitor
+  const monitor = networkManager.getMonitor(network);
+  res.json(monitor ? monitor.getRecentTransactions(limit) : []);
 });
 
 // Start server
@@ -100,20 +82,17 @@ server.listen(PORT, async () => {
 
   try {
     await cacheService.connect();
-    // Seed Redis from DB so returning users see history immediately
-    const recent = await dbService.getRecentTransactions(100);
-    await cacheService.seed(recent);
+    // Seed ETH mainnet cache from DB on startup
+    const recent = await dbService.getRecentTransactions(100, "eth-mainnet");
+    await cacheService.seed(recent, "eth-mainnet");
   } catch (e) {
     console.warn("⚠️  Redis unavailable — running without cache:", (e as Error).message);
   }
 
-  // Start Ethereum monitoring
+  // Start default network (ETH mainnet)
   try {
-    console.log("🧪 Testing Alchemy connection...");
-    const testBlock = await ethService["alchemy"].core.getBlockNumber();
-    console.log(`✅ Alchemy works! Latest block: ${testBlock}`);
-    await ethService.start();
+    await networkManager.startAll();
   } catch (error) {
-    console.error("❌ Failed to start Ethereum service:", error);
+    console.error("❌ Failed to start network manager:", error);
   }
 });

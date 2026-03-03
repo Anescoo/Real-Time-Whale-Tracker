@@ -1,8 +1,11 @@
 import Redis from 'ioredis';
 import { WhaleTransaction } from '../types';
 
-const CACHE_KEY = 'whale:recent';
 const MAX_CACHED = 100;
+
+function cacheKey(networkId: string): string {
+  return `whale:recent:${networkId}`;
+}
 
 export class CacheService {
   private redis: Redis;
@@ -20,39 +23,41 @@ export class CacheService {
     console.log('✅ Redis connected');
   }
 
-  /** Seed the cache from DB data (newest-first array). */
-  async seed(transactions: WhaleTransaction[]): Promise<void> {
+  /** Seed the cache for a given network from DB data (newest-first array). */
+  async seed(transactions: WhaleTransaction[], networkId: string): Promise<void> {
     if (!this.available || transactions.length === 0) return;
     try {
+      const key = cacheKey(networkId);
       const pipeline = this.redis.pipeline();
-      pipeline.del(CACHE_KEY);
+      pipeline.del(key);
       // Push oldest→newest so lpush ends with newest at index 0
       for (let i = transactions.length - 1; i >= 0; i--) {
-        pipeline.lpush(CACHE_KEY, JSON.stringify(transactions[i]));
+        pipeline.lpush(key, JSON.stringify(transactions[i]));
       }
       await pipeline.exec();
-      console.log(`✅ Redis seeded with ${transactions.length} whale transactions`);
+      console.log(`✅ Redis seeded with ${transactions.length} transactions for ${networkId}`);
     } catch (e) {
       console.error('❌ Redis seed error:', e);
     }
   }
 
   /** Add one transaction to the front of the cache. */
-  async pushTransaction(tx: WhaleTransaction): Promise<void> {
+  async pushTransaction(tx: WhaleTransaction, networkId: string): Promise<void> {
     if (!this.available) return;
     try {
-      await this.redis.lpush(CACHE_KEY, JSON.stringify(tx));
-      await this.redis.ltrim(CACHE_KEY, 0, MAX_CACHED - 1);
+      const key = cacheKey(networkId);
+      await this.redis.lpush(key, JSON.stringify(tx));
+      await this.redis.ltrim(key, 0, MAX_CACHED - 1);
     } catch (e) {
       console.error('❌ Redis push error:', e);
     }
   }
 
-  /** Return up to MAX_CACHED transactions, newest first. */
-  async getRecentTransactions(): Promise<WhaleTransaction[]> {
+  /** Return up to MAX_CACHED transactions for a network, newest first. */
+  async getRecentTransactions(networkId: string): Promise<WhaleTransaction[]> {
     if (!this.available) return [];
     try {
-      const items = await this.redis.lrange(CACHE_KEY, 0, MAX_CACHED - 1);
+      const items = await this.redis.lrange(cacheKey(networkId), 0, MAX_CACHED - 1);
       return items.map((item) => JSON.parse(item) as WhaleTransaction);
     } catch (e) {
       console.error('❌ Redis get error:', e);

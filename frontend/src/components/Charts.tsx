@@ -5,6 +5,8 @@ import { TimeRange } from './Filters';
 interface Props {
   transactions: Transaction[];
   range: TimeRange;
+  symbol: string;
+  threshold: number;
 }
 
 const BUCKET_CONFIG: Record<TimeRange, { count: number; ms: number; fmt: (t: number) => string }> = {
@@ -68,16 +70,27 @@ function areaPath(pts: Point[], bottom: number): string {
 }
 
 /* ── Amount-distribution histogram ── */
-const DIST_BUCKETS = [
-  { label: '100–200', min: 100,  max: 200,      color: '#06b6d4' },
-  { label: '200–500', min: 200,  max: 500,      color: '#22c55e' },
-  { label: '500–1K',  min: 500,  max: 1_000,    color: '#f59e0b' },
-  { label: '1K–5K',   min: 1_000, max: 5_000,   color: '#ef4444' },
-  { label: '5K+',     min: 5_000, max: Infinity, color: '#a855f7' },
-];
+const BUCKET_COLORS = ['#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#a855f7'];
+const BUCKET_MULT   = [1, 2, 5, 10, 50]; // multiples of threshold
 
-function AmountHistogram({ transactions }: { transactions: Transaction[] }) {
-  const buckets = DIST_BUCKETS.map((b) => ({
+function fmtLabel(v: number): string {
+  if (v >= 1_000_000) return `${v % 1_000_000 === 0 ? (v / 1_000_000).toFixed(0) : (v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `${v % 1_000 === 0     ? (v / 1_000).toFixed(0)     : (v / 1_000).toFixed(1)}K`;
+  return v % 1 === 0 ? v.toFixed(0) : v.toFixed(1);
+}
+
+function buildDistBuckets(threshold: number) {
+  return BUCKET_MULT.map((m, i) => {
+    const min   = threshold * m;
+    const max   = i < BUCKET_MULT.length - 1 ? threshold * BUCKET_MULT[i + 1] : Infinity;
+    const label = max === Infinity ? `${fmtLabel(min)}+` : `${fmtLabel(min)}–${fmtLabel(max)}`;
+    return { label, min, max, color: BUCKET_COLORS[i] };
+  });
+}
+
+function AmountHistogram({ transactions, symbol, threshold }: { transactions: Transaction[]; symbol: string; threshold: number }) {
+  const distBuckets = buildDistBuckets(threshold);
+  const buckets = distBuckets.map((b) => ({
     ...b,
     count: transactions.filter((t) => t.valueEth >= b.min && t.valueEth < b.max).length,
   }));
@@ -143,7 +156,7 @@ function AmountHistogram({ transactions }: { transactions: Transaction[] }) {
                       fill={b.color}
                       opacity="0.75"
                     >
-                      <title>{`${b.label} ETH: ${b.count} tx`}</title>
+                      <title>{`${b.label} ${symbol}: ${b.count} tx`}</title>
                     </rect>
                     {/* Count label on bar */}
                     <text
@@ -180,7 +193,7 @@ function AmountHistogram({ transactions }: { transactions: Transaction[] }) {
 }
 
 /* ── Volume-over-time line chart ── */
-export function Charts({ transactions, range }: Props) {
+export function Charts({ transactions, range, symbol, threshold }: Props) {
   const { buckets, maxVol } = useMemo(() => {
     const cfg = BUCKET_CONFIG[range];
     const now = Date.now();
@@ -226,7 +239,7 @@ export function Charts({ transactions, range }: Props) {
           <div className="section-title">Volume over time</div>
           <div style={{ display: 'flex', gap: 16 }}>
             <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent)' }}>
-              {totalVol.toFixed(0)} ETH
+              {totalVol.toFixed(0)} {symbol}
             </span>
             <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>
               {totalTx} txs
@@ -276,7 +289,7 @@ export function Charts({ transactions, range }: Props) {
             {points.map((p, i) =>
               p.volume > 0 ? (
                 <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="3.5" fill="var(--accent)">
-                  <title>{`${p.volume.toFixed(1)} ETH · ${p.count} tx`}</title>
+                  <title>{`${p.volume.toFixed(1)} ${symbol} · ${p.count} tx`}</title>
                 </circle>
               ) : null
             )}
@@ -302,7 +315,7 @@ export function Charts({ transactions, range }: Props) {
       </div>
 
       {/* ── Histogram: transaction size distribution ── */}
-      <AmountHistogram transactions={transactions} />
+      <AmountHistogram transactions={transactions} symbol={symbol} threshold={threshold} />
     </div>
   );
 }

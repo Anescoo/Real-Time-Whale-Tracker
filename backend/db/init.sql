@@ -22,14 +22,15 @@ CREATE TABLE IF NOT EXISTS whale_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tx_hash VARCHAR(66) UNIQUE NOT NULL,
     block_number BIGINT NOT NULL,
-    from_address VARCHAR(42) NOT NULL,
-    to_address VARCHAR(42) NOT NULL,
+    from_address VARCHAR(100) NOT NULL,
+    to_address VARCHAR(100) NOT NULL,
     value_eth DECIMAL(30, 18) NOT NULL,
     value_usd DECIMAL(20, 2),
     gas_price BIGINT,
     gas_used BIGINT,
     timestamp TIMESTAMP NOT NULL,
-    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    network VARCHAR(50) NOT NULL DEFAULT 'eth-mainnet'
 );
 
 -- ====================================
@@ -41,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_from_address ON whale_transactions(from_address);
 CREATE INDEX IF NOT EXISTS idx_to_address ON whale_transactions(to_address);
 CREATE INDEX IF NOT EXISTS idx_value_eth ON whale_transactions(value_eth);
 CREATE INDEX IF NOT EXISTS idx_detected_at ON whale_transactions(detected_at);
+CREATE INDEX IF NOT EXISTS idx_network ON whale_transactions(network);
 
 -- ====================================
 -- 5. Table alerts

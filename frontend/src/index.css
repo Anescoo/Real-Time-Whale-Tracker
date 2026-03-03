@@ -113,6 +113,51 @@ body {
   margin-top: 4px; font-family: var(--mono);
 }
 
+/* ── NETWORK SELECTOR ── */
+.network-selector { position: relative; }
+.network-selector-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border-2); background: var(--surface-2);
+  color: var(--text); font-size: 12px; cursor: pointer; font-family: inherit;
+  transition: all 0.15s;
+}
+.network-selector-btn:hover { border-color: var(--accent); }
+.network-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.network-name { font-weight: 600; }
+.network-symbol { color: var(--text-2); font-family: var(--mono); font-size: 11px; }
+.network-chevron { color: var(--text-3); font-size: 8px; margin-left: 2px; }
+.network-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 8px; padding: 4px; min-width: 190px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.network-option {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border-radius: 5px; border: none;
+  background: transparent; color: var(--text); font-size: 12px;
+  cursor: pointer; font-family: inherit; text-align: left;
+  transition: background 0.1s;
+}
+.network-option:hover:not(.disabled) { background: var(--surface-2); }
+.network-option.selected { background: var(--accent-bg); color: var(--accent); }
+.network-option.disabled { opacity: 0.45; cursor: default; }
+.network-option-name { flex: 1; font-weight: 500; }
+.network-option-symbol { color: var(--text-2); font-family: var(--mono); font-size: 11px; }
+.network-soon {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--amber); background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.25); border-radius: 3px; padding: 1px 5px;
+}
+
+/* network badge in whale list */
+.network-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px;
+  opacity: 0.85;
+}
+
 /* ── FILTERS ── */
 .filters { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
 .filters-label {

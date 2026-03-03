@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Header } from './Header';
 import { StatsCards } from './StatsCards';
@@ -8,6 +8,7 @@ import { TopWhales } from './TopWhales';
 import { Charts } from './Charts';
 import { WhaleFlow } from './WhaleFlow';
 import { WhaleProfile } from './WhaleProfile';
+import { NetworkInfo } from './NetworkSelector';
 
 const RANGE_MS: Record<TimeRange, number> = {
   '1min':  60_000,
@@ -20,11 +21,27 @@ const RANGE_MS: Record<TimeRange, number> = {
   'all':   Infinity,
 };
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
 export function Dashboard() {
-  const { transactions, stats, ethPrice, status, connectedClients, newestHash } = useWebSocket();
-  const [range, setRange]               = useState<TimeRange>('1h');
-  const [minEth, setMinEth]             = useState(100);
-  const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
+  const [selectedNetwork, setSelectedNetwork] = useState('eth-mainnet');
+  const [networks, setNetworks]               = useState<NetworkInfo[]>([
+    { id: 'eth-mainnet', name: 'Ethereum', symbol: 'ETH', color: '#627eea', explorer: 'https://etherscan.io', provider: 'alchemy', threshold: 100, sliderMin: 100, sliderMax: 2000, sliderStep: 100 },
+  ]);
+  const { transactions, stats, ethPrice, status, connectedClients, newestHash } = useWebSocket(selectedNetwork);
+  const [range, setRange]                     = useState<TimeRange>('1h');
+  const [minEth, setMinEth]                   = useState(100);
+  const [selectedAddr, setSelectedAddr]       = useState<string | null>(null);
+
+  // Fetch network list from backend once on mount
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/networks`)
+      .then((r) => r.json())
+      .then((data: NetworkInfo[]) => setNetworks(data))
+      .catch(() => { /* backend may not be ready yet */ });
+  }, []);
+
+  const currentNetwork = networks.find((n) => n.id === selectedNetwork);
 
   const filtered = useMemo(() => {
     const cutoff = RANGE_MS[range] === Infinity ? 0 : Date.now() - RANGE_MS[range];
@@ -35,7 +52,13 @@ export function Dashboard() {
 
   return (
     <>
-      <Header status={status} connectedClients={connectedClients} ethPrice={ethPrice} />
+      <Header
+        status={status}
+        connectedClients={connectedClients}
+        ethPrice={ethPrice}
+        symbol={currentNetwork?.symbol ?? 'ETH'}
+        networks={networks}
+      />
 
       <main className="main">
         <StatsCards stats={stats} transactions={filtered} />
@@ -47,6 +70,17 @@ export function Dashboard() {
           minEth={minEth}
           onRangeChange={setRange}
           onMinEthChange={setMinEth}
+          networks={networks}
+          selectedNetwork={selectedNetwork}
+          onNetworkChange={(id) => {
+            const net = networks.find((n) => n.id === id);
+            setSelectedNetwork(id);
+            setMinEth(net?.threshold ?? net?.sliderMin ?? 100);
+          }}
+          symbol={currentNetwork?.symbol ?? 'ETH'}
+          sliderMin={currentNetwork?.sliderMin ?? 100}
+          sliderMax={currentNetwork?.sliderMax ?? 2000}
+          sliderStep={currentNetwork?.sliderStep ?? 100}
         />
 
         <div className="content-grid">
@@ -55,15 +89,22 @@ export function Dashboard() {
             ethPrice={ethPrice}
             newestHash={newestHash}
             onAddressClick={setSelectedAddr}
+            networks={networks}
           />
           <TopWhales
             transactions={filtered}
             ethPrice={ethPrice}
             onAddressClick={setSelectedAddr}
+            symbol={currentNetwork?.symbol ?? 'ETH'}
           />
         </div>
 
-        <Charts transactions={filtered} range={range} />
+        <Charts
+          transactions={filtered}
+          range={range}
+          symbol={currentNetwork?.symbol ?? 'ETH'}
+          threshold={minEth}
+        />
       </main>
 
       {selectedAddr && (

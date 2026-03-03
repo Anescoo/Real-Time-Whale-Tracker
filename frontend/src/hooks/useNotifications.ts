@@ -4,7 +4,7 @@ export interface NotificationSettings {
   enabled: boolean;
   sound: boolean;
   desktop: boolean;
-  minEth: number;
+  minThresholds: Record<string, number>;
 }
 
 export interface AppNotification {
@@ -15,6 +15,7 @@ export interface AppNotification {
   from: string;
   timestamp: number;
   read: boolean;
+  network: string;
 }
 
 const STORAGE_KEY = 'whale-notif-settings';
@@ -24,13 +25,20 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
   sound: true,
   desktop: false,
-  minEth: 100,
+  minThresholds: { 'eth-mainnet': 100, 'bitcoin': 50 },
 };
 
 function loadSettings(): NotificationSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migrate from old single-threshold format
+      if ('minEth' in parsed && !('minThresholds' in parsed)) {
+        return { ...DEFAULT_SETTINGS, ...parsed, minThresholds: { 'eth-mainnet': parsed.minEth, 'bitcoin': 50 } };
+      }
+      return { ...DEFAULT_SETTINGS, ...parsed };
+    }
   } catch {}
   return { ...DEFAULT_SETTINGS };
 }
@@ -41,6 +49,8 @@ export function useNotifications() {
   const [toast, setToast] = useState<AppNotification | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastToastTimeRef = useRef<number>(0);
+  const lastSoundTimeRef = useRef<number>(0);
 
   // Persist settings
   useEffect(() => {
@@ -53,7 +63,13 @@ export function useNotifications() {
     audioRef.current.volume = 0.5;
   }, []);
 
+  const TOAST_COOLDOWN = 3_000; // ms between toast popups
+  const SOUND_COOLDOWN = 5_000; // ms between sounds
+
   const showToast = useCallback((notif: AppNotification) => {
+    const now = Date.now();
+    if (now - lastToastTimeRef.current < TOAST_COOLDOWN) return;
+    lastToastTimeRef.current = now;
     setToast(notif);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 5000);
@@ -69,7 +85,8 @@ export function useNotifications() {
     const handler = (e: Event) => {
       const tx = (e as CustomEvent).detail;
       if (!settings.enabled) return;
-      if (tx.valueEth < settings.minEth) return;
+      const threshold = settings.minThresholds[tx.network] ?? settings.minThresholds['eth-mainnet'] ?? 100;
+      if (tx.valueEth < threshold) return;
 
       const notif: AppNotification = {
         id: tx.hash,
@@ -79,13 +96,16 @@ export function useNotifications() {
         from: tx.from,
         timestamp: tx.timestamp,
         read: false,
+        network: tx.network ?? 'eth-mainnet',
       };
 
       setNotifications((prev) => [notif, ...prev].slice(0, MAX_NOTIFICATIONS));
       showToast(notif);
 
-      // Sound
-      if (settings.sound && audioRef.current) {
+      // Sound (rate-limited)
+      const nowSound = Date.now();
+      if (settings.sound && audioRef.current && nowSound - lastSoundTimeRef.current >= SOUND_COOLDOWN) {
+        lastSoundTimeRef.current = nowSound;
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(() => {});
       }

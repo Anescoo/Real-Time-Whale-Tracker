@@ -5,6 +5,7 @@ interface Props {
   transactions: Transaction[];
   ethPrice: number;
   onAddressClick: (address: string) => void;
+  symbol?: string;
 }
 
 function timeAgo(ts: number) {
@@ -28,7 +29,7 @@ function amountColor(eth: number) {
   return 'var(--blue)';
 }
 
-export function TopWhales({ transactions, ethPrice, onAddressClick }: Props) {
+export function TopWhales({ transactions, ethPrice, onAddressClick, symbol = 'ETH' }: Props) {
   const byAddress = new Map<string, Transaction>();
   for (const tx of transactions) {
     const prev = byAddress.get(tx.from);
@@ -79,7 +80,7 @@ export function TopWhales({ transactions, ethPrice, onAddressClick }: Props) {
                   <div>
                     {tx.valueEth >= 10000
                       ? `${(tx.valueEth / 1000).toFixed(1)}K`
-                      : tx.valueEth.toFixed(1)} ETH
+                      : tx.valueEth.toFixed(1)} {symbol}
                   </div>
                   {usd > 0 && (
                     <div style={{ fontSize: 10, color: 'var(--green)', fontWeight: 400 }}>

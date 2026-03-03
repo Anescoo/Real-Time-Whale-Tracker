@@ -10,6 +10,7 @@ export interface Transaction {
   valueEth: number;
   valueUsd: number;
   timestamp: number;
+  network: string;
 }
 
 export interface Stats {
@@ -23,6 +24,7 @@ export interface Stats {
   ethPrice: number;
   whaleThreshold: number;
   connectedClients: number;
+  symbol?: string;
 }
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
@@ -35,7 +37,7 @@ const DEFAULT_STATS: Stats = {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export const useWebSocket = () => {
+export const useWebSocket = (selectedNetwork = 'eth-mainnet') => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<Stats>(DEFAULT_STATS);
   const [ethPrice, setEthPrice] = useState(0);
@@ -43,7 +45,13 @@ export const useWebSocket = () => {
   const [connectedClients, setConnectedClients] = useState(0);
   const newestHashRef = useRef<string | null>(null);
   const prevBlocksRef = useRef(0);
+  const socketRef = useRef<Socket | null>(null);
+  const selectedNetworkRef = useRef(selectedNetwork);
 
+  // Keep ref in sync so the connect handler always uses the latest value
+  useEffect(() => { selectedNetworkRef.current = selectedNetwork; }, [selectedNetwork]);
+
+  // One-time socket setup
   useEffect(() => {
     const socket: Socket = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
@@ -51,34 +59,43 @@ export const useWebSocket = () => {
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
     });
+    socketRef.current = socket;
 
-    socket.on('connect', async () => {
-      setStatus('connected');
-      // Fetch transaction history on connect
+    const fetchHistory = async (network: string) => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/whales/recent?limit=50`);
+        const res = await fetch(`${BACKEND_URL}/api/whales/recent?limit=50&network=${network}`);
         if (res.ok) {
           const data: Transaction[] = await res.json();
           setTransactions(data);
         }
       } catch { /* ignore */ }
+    };
+
+    socket.on('connect', async () => {
+      setStatus('connected');
+      socket.emit('join:network', { network: selectedNetworkRef.current });
+      await fetchHistory(selectedNetworkRef.current);
     });
 
     socket.on('disconnect', () => setStatus('disconnected'));
     socket.on('connect_error', () => setStatus('error'));
 
     socket.on('whale:transaction', (tx: Transaction) => {
-      console.log(
-        `%c🐋 Whale%c ${tx.valueEth.toFixed(2)} ETH` +
-        (tx.valueUsd > 0 ? ` ($${tx.valueUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })})` : '') +
-        ` | block #${tx.blockNumber} | ${tx.from.slice(0, 10)}… → ${tx.to.slice(0, 10)}…`,
-        'color:#ef4444;font-weight:700',
-        'color:inherit'
-      );
-      newestHashRef.current = tx.hash;
-      setTransactions(prev => [tx, ...prev].slice(0, 100));
-      window.dispatchEvent(new CustomEvent('new-whale', { detail: tx }));
-    });
+  // 🔒 Ignore transactions from other networks
+  if (tx.network !== selectedNetworkRef.current) return;
+
+  console.log(
+    `%c🐋 Whale%c ${tx.valueEth.toFixed(4)} ${tx.network ?? ''}` +
+    (tx.valueUsd > 0 ? ` (€${tx.valueUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })})` : '') +
+    ` | block #${tx.blockNumber} | ${tx.from.slice(0, 10)}… → ${tx.to.slice(0, 10)}…`,
+    'color:#ef4444;font-weight:700',
+    'color:inherit'
+  );
+
+  newestHashRef.current = tx.hash;
+  setTransactions(prev => [tx, ...prev].slice(0, 200));
+  window.dispatchEvent(new CustomEvent('new-whale', { detail: tx }));
+});
 
     socket.on('eth:price', (price: number) => {
       if (price > 0) setEthPrice(price);
@@ -107,7 +124,23 @@ export const useWebSocket = () => {
     socket.on('clients:count', (count: number) => setConnectedClients(count));
 
     return () => { socket.disconnect(); };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Switch network when selectedNetwork changes (after first mount)
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+
+    socket.emit('join:network', { network: selectedNetwork });
+    setTransactions([]);
+    setStats(DEFAULT_STATS);
+    prevBlocksRef.current = 0;
+
+    fetch(`${BACKEND_URL}/api/whales/recent?limit=50&network=${selectedNetwork}`)
+      .then((r) => r.json())
+      .then((data: Transaction[]) => setTransactions(data))
+      .catch(() => { /* ignore */ });
+  }, [selectedNetwork]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { transactions, stats, ethPrice, status, connectedClients, newestHash: newestHashRef.current };
 };

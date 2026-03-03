@@ -9,4 +9,5 @@ export interface WhaleTransaction {
   valueUsd: number;
   blockNumber: number;
   timestamp: number;  // Unix ms
+  network: string;    // e.g. 'eth-mainnet', 'bitcoin'
 }

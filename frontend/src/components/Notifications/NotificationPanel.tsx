@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppNotification, NotificationSettings } from '../../hooks/useNotifications';
 import { NotificationSettings as SettingsPanel } from './NotificationSettings';
+import { NetworkInfo } from '../NetworkSelector';
 
 interface Props {
   notifications: AppNotification[];
@@ -9,6 +10,7 @@ interface Props {
   onRequestDesktop: () => Promise<boolean>;
   onMarkAllRead: () => void;
   onClearAll: () => void;
+  networks: NetworkInfo[];
 }
 
 function timeAgo(ts: number) {
@@ -37,8 +39,10 @@ export function NotificationPanel({
   onRequestDesktop,
   onMarkAllRead,
   onClearAll,
+  networks,
 }: Props) {
   const [view, setView] = useState<'list' | 'settings'>('list');
+  const networkMap = Object.fromEntries(networks.map((n) => [n.id, n]));
 
   if (view === 'settings') {
     return (
@@ -47,6 +51,7 @@ export function NotificationPanel({
         onChange={onSettingsChange}
         onRequestDesktop={onRequestDesktop}
         onBack={() => setView('list')}
+        networks={networks}
       />
     );
   }
@@ -94,7 +99,7 @@ export function NotificationPanel({
                 {!n.read && <span className="notif-dot" />}
                 <div className="notif-item-body">
                   <div className={`notif-item-eth ${amountClass(n.valueEth)}`}>
-                    {fmtEth(n.valueEth)} ETH
+                    {fmtEth(n.valueEth)} {networkMap[n.network]?.symbol ?? 'ETH'}
                   </div>
                   {usd > 0 && (
                     <div className="notif-item-usd">
