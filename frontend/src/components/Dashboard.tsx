@@ -147,6 +147,7 @@ export function Dashboard() {
           allTransactions={transactions}
           ethPrice={ethPrice}
           onClose={() => setSelectedAddr(null)}
+          networks={networks}
         />
       )}
     </>

@@ -1,12 +1,19 @@
 import { useMemo } from 'react';
 import { Transaction } from '../hooks/useWebSocket';
 import { lookupAddress } from '../utils/knownAddresses';
+import { NetworkInfo } from './NetworkSelector';
+
+const EXPLORER_FALLBACK: Record<string, string> = {
+  'eth-mainnet': 'https://etherscan.io',
+  'bitcoin': 'https://mempool.space',
+};
 
 interface Props {
   address: string;
   allTransactions: Transaction[];
   ethPrice: number;
   onClose: () => void;
+  networks: NetworkInfo[];
 }
 
 function timeAgo(ts: number) {
@@ -27,7 +34,7 @@ function amountClass(eth: number) {
   return 'amount-lg';
 }
 
-export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Props) {
+export function WhaleProfile({ address, allTransactions, ethPrice, onClose, networks }: Props) {
   const label = lookupAddress(address);
 
   const { sent, received, totalSent, totalReceived } = useMemo(() => {
@@ -48,6 +55,13 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
   const netEth = totalReceived - totalSent;
   const usdValue = (Math.abs(netEth) * ethPrice);
 
+  // Detect the network from this address's transactions
+  const networkId = txs[0]?.network ?? 'eth-mainnet';
+  const net = networks.find((n) => n.id === networkId);
+  const explorerBase = net?.explorer ?? EXPLORER_FALLBACK[networkId] ?? 'https://etherscan.io';
+  const explorerLabel = net ? net.name.replace(' Mainnet', '') : 'Explorer';
+  const symbol = net?.symbol ?? 'ETH';
+
   return (
     <div className="profile-overlay" onClick={onClose}>
       <div className="profile-panel" onClick={(e) => e.stopPropagation()}>
@@ -65,13 +79,13 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
               <a
-                href={`https://etherscan.io/address/${address}`}
+                href={`${explorerBase}/address/${address}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="link-btn"
                 style={{ fontSize: 10 }}
               >
-                Etherscan ↗
+                {explorerLabel} ↗
               </a>
               <button
                 className="link-btn"
@@ -90,14 +104,14 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
           <div className="profile-stat">
             <div className="profile-stat-label">Sent (session)</div>
             <div className="profile-stat-val" style={{ color: 'var(--red)' }}>
-              {fmtEth(totalSent)} ETH
+              {fmtEth(totalSent)} {symbol}
             </div>
             <div className="profile-stat-sub">{sent.length} tx</div>
           </div>
           <div className="profile-stat">
             <div className="profile-stat-label">Received (session)</div>
             <div className="profile-stat-val" style={{ color: 'var(--green)' }}>
-              {fmtEth(totalReceived)} ETH
+              {fmtEth(totalReceived)} {symbol}
             </div>
             <div className="profile-stat-sub">{received.length} tx</div>
           </div>
@@ -107,7 +121,7 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
               className="profile-stat-val"
               style={{ color: netEth >= 0 ? 'var(--green)' : 'var(--red)' }}
             >
-              {netEth >= 0 ? '+' : ''}{fmtEth(netEth)} ETH
+              {netEth >= 0 ? '+' : ''}{fmtEth(netEth)} {symbol}
             </div>
             {ethPrice > 0 && (
               <div className="profile-stat-sub">
@@ -140,7 +154,7 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
                       {isSend ? '↑ Sent' : '↓ Recv'}
                     </span>
                     <span className={`profile-tx-eth ${amountClass(tx.valueEth)}`}>
-                      {fmtEth(tx.valueEth)} ETH
+                      {fmtEth(tx.valueEth)} {symbol}
                     </span>
                     {usd > 0 && (
                       <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
@@ -167,7 +181,7 @@ export function WhaleProfile({ address, allTransactions, ethPrice, onClose }: Pr
                       {timeAgo(tx.timestamp)} · #{tx.blockNumber.toLocaleString()}
                     </span>
                     <a
-                      href={`https://etherscan.io/tx/${tx.hash}`}
+                      href={`${explorerBase}/tx/${tx.hash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="link-btn"
