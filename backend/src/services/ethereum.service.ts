@@ -1,20 +1,16 @@
 import { Alchemy, Network, Utils } from 'alchemy-sdk';
 import { WebSocketService } from './websocket.service';
+import { DatabaseService } from './database.service';
+import { CacheService } from './cache.service';
+import { WhaleTransaction } from '../types';
 
-export interface WhaleTransaction {
-  hash: string;
-  from: string;
-  to: string;
-  value: string;
-  valueEth: number;
-  valueUsd: number;
-  blockNumber: number;
-  timestamp: number;
-}
+export type { WhaleTransaction };
 
 export class EthereumService {
   private alchemy: Alchemy;
   private wsService: WebSocketService;
+  private dbService?: DatabaseService;
+  private cacheService?: CacheService;
   private whaleThreshold: number;
   private ethPriceUsd: number = 0;
   private processedTxs: Set<string> = new Set();
@@ -30,8 +26,10 @@ export class EthereumService {
     lastBlockNumber: 0,
   };
 
-  constructor(wsService: WebSocketService) {
+  constructor(wsService: WebSocketService, dbService?: DatabaseService, cacheService?: CacheService) {
     this.wsService = wsService;
+    this.dbService = dbService;
+    this.cacheService = cacheService;
     this.whaleThreshold = parseFloat(process.env.WHALE_THRESHOLD_ETH || '100');
 
     const apiKey = process.env.ALCHEMY_API_KEY;
@@ -135,6 +133,11 @@ export class EthereumService {
         ).length;
 
         this.processedTxs.add(tx.hash);
+
+        // Persist to DB and update Redis cache (fire-and-forget — don't block block processing)
+        this.dbService?.saveTransaction(whaleTx);
+        this.cacheService?.pushTransaction(whaleTx);
+
         this.wsService.broadcastWhaleTransaction(whaleTx);
 
         console.log(`🐋 Whale #${this.stats.whalesDetected} | ${valueEth.toFixed(2)} ETH (€${(valueEth * this.ethPriceUsd).toLocaleString('en-US', { maximumFractionDigits: 0 })}) | block #${blockNumber} | from ${tx.from.slice(0, 10)}…`);

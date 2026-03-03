@@ -4,6 +4,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { WebSocketService } from "./services/websocket.service";
 import { EthereumService } from "./services/ethereum.service";
+import { DatabaseService } from "./services/database.service";
+import { CacheService } from "./services/cache.service";
 
 // Load environment variables
 dotenv.config();
@@ -16,8 +18,10 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 app.use(express.json());
 
 // Initialize services
+const dbService = new DatabaseService();
+const cacheService = new CacheService();
 const wsService = new WebSocketService(server);
-const ethService = new EthereumService(wsService);
+const ethService = new EthereumService(wsService, dbService, cacheService);
 
 // Routes
 app.get("/health", (req, res) => {
@@ -37,8 +41,24 @@ app.get("/api/stats", (_req, res) => {
   res.json(ethService.getStats());
 });
 
-app.get("/api/whales/recent", (req, res) => {
+app.get("/api/whales/recent", async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
+
+  // 1. Try Redis cache (fastest)
+  const cached = await cacheService.getRecentTransactions();
+  if (cached.length > 0) {
+    res.json(cached.slice(0, limit));
+    return;
+  }
+
+  // 2. Try PostgreSQL
+  const fromDb = await dbService.getRecentTransactions(limit);
+  if (fromDb.length > 0) {
+    res.json(fromDb);
+    return;
+  }
+
+  // 3. Fallback: in-memory (server just started, DB empty)
   res.json(ethService.getRecentTransactions(limit));
 });
 
@@ -71,9 +91,24 @@ server.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
 
+  // Connect persistence layer
+  try {
+    await dbService.connect();
+  } catch (e) {
+    console.warn("⚠️  PostgreSQL unavailable — running without persistence:", (e as Error).message);
+  }
+
+  try {
+    await cacheService.connect();
+    // Seed Redis from DB so returning users see history immediately
+    const recent = await dbService.getRecentTransactions(100);
+    await cacheService.seed(recent);
+  } catch (e) {
+    console.warn("⚠️  Redis unavailable — running without cache:", (e as Error).message);
+  }
+
   // Start Ethereum monitoring
   try {
-    // Test Alchemy connection
     console.log("🧪 Testing Alchemy connection...");
     const testBlock = await ethService["alchemy"].core.getBlockNumber();
     console.log(`✅ Alchemy works! Latest block: ${testBlock}`);
