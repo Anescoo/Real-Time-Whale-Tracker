@@ -102,14 +102,17 @@ export function NotificationSettings({ settings, onChange, onRequestDesktop, onB
           {activeNetworks.map((net) => {
             const val = settings.minThresholds[net.id] ?? net.threshold;
             return (
-              <div key={net.id} style={{ marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: net.color, fontWeight: 600 }}>{net.name}</span>
-                  <span className="filter-amount-value">{val} {net.symbol}</span>
+              <div key={net.id} style={{ marginBottom: 16, width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: net.color, fontWeight: 600 }}>{net.name}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent)' }}>
+                    {val}&nbsp;<span style={{ color: 'var(--text-2)', fontSize: 11 }}>{net.symbol}</span>
+                  </span>
                 </div>
                 <input
                   type="range"
                   className="filter-range"
+                  style={{ width: '100%' }}
                   min={net.sliderMin}
                   max={net.sliderMax}
                   step={net.sliderStep}

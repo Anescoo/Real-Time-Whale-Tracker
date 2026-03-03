@@ -42,6 +42,55 @@ export class DatabaseService {
     }
   }
 
+  async getCountSince(sinceMs: number, network: string): Promise<number> {
+    if (!this.available) return 0;
+    try {
+      const { rows } = await this.pool.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM whale_transactions
+         WHERE timestamp >= to_timestamp($1 / 1000.0) AND network = $2`,
+        [sinceMs, network]
+      );
+      return parseInt(rows[0]?.count ?? '0', 10);
+    } catch (e) {
+      console.error('❌ DB count error:', e);
+      return 0;
+    }
+  }
+
+  async likeTransaction(hash: string): Promise<void> {
+    if (!this.available) return;
+    try {
+      await this.pool.query(
+        `INSERT INTO whale_likes (tx_hash) VALUES ($1) ON CONFLICT DO NOTHING`,
+        [hash]
+      );
+    } catch (e) {
+      console.error('❌ DB like error:', e);
+    }
+  }
+
+  async unlikeTransaction(hash: string): Promise<void> {
+    if (!this.available) return;
+    try {
+      await this.pool.query(`DELETE FROM whale_likes WHERE tx_hash = $1`, [hash]);
+    } catch (e) {
+      console.error('❌ DB unlike error:', e);
+    }
+  }
+
+  async getLikedHashes(): Promise<string[]> {
+    if (!this.available) return [];
+    try {
+      const { rows } = await this.pool.query<{ tx_hash: string }>(
+        `SELECT tx_hash FROM whale_likes ORDER BY created_at DESC`
+      );
+      return rows.map((r) => r.tx_hash);
+    } catch (e) {
+      console.error('❌ DB liked error:', e);
+      return [];
+    }
+  }
+
   async getRecentTransactions(limit = 100, network?: string): Promise<WhaleTransaction[]> {
     if (!this.available) return [];
     try {

@@ -138,7 +138,7 @@ export class EvmMonitorService {
         };
 
         this.recentTransactions.unshift(whaleTx);
-        if (this.recentTransactions.length > 100) this.recentTransactions.pop();
+        if (this.recentTransactions.length > 250) this.recentTransactions.pop();
 
         this.stats.last24hCount = this.recentTransactions.filter(
           (t) => t.timestamp >= Date.now() - 86_400_000

@@ -112,12 +112,17 @@ export function useNotifications() {
 
       // Desktop
       if (settings.desktop && Notification.permission === 'granted') {
-        const eth = tx.valueEth >= 10000
+        const SYMBOLS: Record<string, string> = { 'eth-mainnet': 'ETH', 'bitcoin': 'BTC', 'polygon-mainnet': 'POL' };
+        const sym = SYMBOLS[tx.network] ?? tx.network.toUpperCase();
+        const amount = tx.valueEth >= 10000
           ? `${(tx.valueEth / 1000).toFixed(1)}K`
-          : tx.valueEth.toFixed(1);
-        new Notification(`🐋 ${eth} ETH whale detected`, {
-          body: `From ${tx.from.slice(0, 8)}…${tx.from.slice(-6)}`,
+          : tx.valueEth.toFixed(2);
+        new Notification(`🐋 ${amount} ${sym} whale detected`, {
+          body: tx.valueUsd > 0
+            ? `≈ €${tx.valueUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+            : `From ${tx.from.slice(0, 8)}…${tx.from.slice(-6)}`,
           icon: '/favicon.ico',
+          tag: tx.hash,
         });
       }
     };

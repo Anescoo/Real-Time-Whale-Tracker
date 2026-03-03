@@ -32,6 +32,9 @@ export class WebSocketService {
       console.log(`🔌 Client connected: ${socket.id}`);
       this.connectedClients.add(socket.id);
 
+      // Always subscribe to whale notifications from all networks
+      socket.join('notifications:all');
+
       // Auto-join default network room
       socket.join('network:eth-mainnet');
 
@@ -89,6 +92,10 @@ export class WebSocketService {
     if (event === 'stats:update') this.lastStats.set(networkId, data as Record<string, unknown>);
     if (event === 'eth:price') this.lastPrices.set(networkId, data as number);
     this.io.to(`network:${networkId}`).emit(event, data);
+    // Mirror whale transactions to notifications room so all clients can trigger alerts
+    if (event === 'whale:transaction') {
+      this.io.to('notifications:all').emit('whale:notification', data);
+    }
   }
 
   public broadcastWhaleTransaction(transaction: unknown): void {

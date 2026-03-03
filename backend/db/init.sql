@@ -92,7 +92,15 @@ VALUES ('test@example.com', 'testuser')
 ON CONFLICT (email) DO NOTHING;
 
 -- ====================================
--- 10. Vérifications
+-- 10. Table whale_likes
+-- ====================================
+CREATE TABLE IF NOT EXISTS whale_likes (
+    tx_hash VARCHAR(100) PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ====================================
+-- 11. Vérifications
 -- ====================================
 DO $$ 
 BEGIN

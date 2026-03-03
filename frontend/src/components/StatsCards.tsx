@@ -3,6 +3,7 @@ import { Stats, Transaction } from '../hooks/useWebSocket';
 interface Props {
   stats: Stats;
   transactions: Transaction[];
+  todayCount: number | null;
 }
 
 function fmt(n: number, decimals = 0) {
@@ -11,34 +12,32 @@ function fmt(n: number, decimals = 0) {
   return n.toFixed(decimals);
 }
 
-export function StatsCards({ stats, transactions }: Props) {
+export function StatsCards({ stats, transactions, todayCount }: Props) {
   const sym = stats.symbol ?? 'ETH';
-  const filteredCount  = transactions.length;
-  const filteredVolEth = transactions.reduce((s, t) => s + t.valueEth, 0);
-  const filteredVolEur = transactions.reduce((s, t) => s + (t.valueUsd > 0 ? t.valueUsd : t.valueEth * stats.ethPrice), 0);
-  const filteredLargest = transactions.length > 0
-    ? Math.max(...transactions.map((t) => t.valueEth))
-    : 0;
-  const filteredLargestEur = filteredLargest * stats.ethPrice;
+  const periodCount = transactions.length;
+  const totalVolEur = stats.totalVolumeUsd > 0 ? stats.totalVolumeUsd : stats.totalVolumeEth * stats.ethPrice;
+  const largestEur  = stats.largestTransactionEth * stats.ethPrice;
+
+  const todayDisplay = todayCount !== null ? fmt(todayCount) : '…';
 
   const cards = [
     {
-      label: 'Whales detected',
-      value: fmt(filteredCount),
-      sub: `${stats.last24hCount} in the last 24h`,
+      label: 'Whales detected today',
+      value: todayDisplay,
+      sub: `${periodCount} in selected window`,
       accent: '#06b6d4',
     },
     {
       label: 'Total volume',
-      value: `${fmt(filteredVolEth, 1)} ${sym}`,
-      sub: filteredVolEur > 0 ? `€${fmt(filteredVolEur)}` : '—',
+      value: `${fmt(stats.totalVolumeEth, 1)} ${sym}`,
+      sub: totalVolEur > 0 ? `€${fmt(totalVolEur)}` : '—',
       accent: '#22c55e',
     },
     {
       label: 'Largest transaction',
-      value: `${fmt(filteredLargest, 1)} ${sym}`,
-      sub: filteredLargest > 0 && stats.ethPrice > 0
-        ? `€${fmt(filteredLargestEur)}`
+      value: `${fmt(stats.largestTransactionEth, 1)} ${sym}`,
+      sub: stats.largestTransactionEth > 0 && stats.ethPrice > 0
+        ? `€${fmt(largestEur)}`
         : '—',
       accent: '#f59e0b',
     },

@@ -1,4 +1,6 @@
+import { useRef, useEffect, useState } from 'react';
 import { Transaction } from '../hooks/useWebSocket';
+import { useLikes } from '../hooks/useLikes';
 import { lookupAddress } from '../utils/knownAddresses';
 import { NetworkInfo } from './NetworkSelector';
 
@@ -8,6 +10,7 @@ interface Props {
   newestHash: string | null;
   onAddressClick: (address: string) => void;
   networks: NetworkInfo[];
+  range: string;
 }
 
 function timeAgo(ts: number) {
@@ -73,20 +76,38 @@ function AddrChip({ address, onClick }: { address: string; onClick: (a: string) 
 const EXPLORER_FALLBACK: Record<string, string> = {
   'eth-mainnet': 'https://etherscan.io',
   'bitcoin': 'https://mempool.space',
-//   'polygon-mainnet': 'https://polygonscan.com',
 };
 
-export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick, networks }: Props) {
+export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick, networks, range }: Props) {
   const networkMap = Object.fromEntries(networks.map((n) => [n.id, n]));
+  const listRef = useRef<HTMLDivElement>(null);
+  const { likedHashes, toggleLike } = useLikes();
+  const [showLikedOnly, setShowLikedOnly] = useState(false);
+
+  // Scroll to top when the time filter changes
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [range]);
+
+  const displayedTxs = showLikedOnly
+    ? transactions.filter((tx) => likedHashes.has(tx.hash))
+    : transactions;
 
   return (
     <div className="section">
       <div className="section-header">
         <div className="section-title">
           Recent whale transactions
-          <span className="section-count">{transactions.length}</span>
+          <span className="section-count">{displayedTxs.length}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            className={`like-filter-btn${showLikedOnly ? ' active' : ''}`}
+            onClick={() => setShowLikedOnly((v) => !v)}
+            title={showLikedOnly ? 'Show all' : 'Show liked only'}
+          >
+            ♥{likedHashes.size > 0 ? ` ${likedHashes.size}` : ''}
+          </button>
           <span style={{ fontSize: 11, color: 'var(--text-3)' }}>live</span>
           {transactions.length > 0 && (
             <button className="export-btn" onClick={() => exportCsv(transactions, transactions[0]?.network ?? 'crypto')} title="Export CSV">
@@ -96,14 +117,14 @@ export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick,
         </div>
       </div>
 
-      <div className="whale-list">
-        {transactions.length === 0 ? (
+      <div className="whale-list" ref={listRef}>
+        {displayedTxs.length === 0 ? (
           <div className="empty-state">
             <div className="icon">🐋</div>
-            <p>Watching for large transactions…</p>
+            <p>{showLikedOnly ? 'No liked whales yet — click ♡ on a transaction to save it.' : 'Watching for large transactions…'}</p>
           </div>
         ) : (
-          transactions.map((tx) => {
+          displayedTxs.map((tx) => {
             const usd = tx.valueUsd > 0 ? tx.valueUsd : tx.valueEth * ethPrice;
             const toLabel   = lookupAddress(tx.to);
             const fromLabel = lookupAddress(tx.from);
@@ -117,6 +138,7 @@ export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick,
             const symbol = net?.symbol ?? 'ETH';
             const explorerBase = net?.explorer ?? EXPLORER_FALLBACK[tx.network] ?? 'https://etherscan.io';
             const explorerLabel = net ? net.name.replace(' Mainnet', '') : 'Explorer';
+            const liked = likedHashes.has(tx.hash);
 
             return (
               <div key={tx.hash} className={`whale-item${tx.hash === newestHash ? ' new-entry' : ''}`}>
@@ -140,6 +162,13 @@ export function WhalesFeed({ transactions, ethPrice, newestHash, onAddressClick,
                   <span className={badgeClass(tx.valueEth)}>{badgeLabel(tx.valueEth)}</span>
                   <span className="whale-time">{timeAgo(tx.timestamp)}</span>
                   <span className="whale-block">#{tx.blockNumber.toLocaleString()}</span>
+                  <button
+                    className={`like-btn${liked ? ' liked' : ''}`}
+                    onClick={() => toggleLike(tx.hash)}
+                    title={liked ? 'Unlike' : 'Like this whale'}
+                  >
+                    {liked ? '♥' : '♡'}
+                  </button>
                   <a
                     href={`${explorerBase}/tx/${tx.hash}`}
                     target="_blank"

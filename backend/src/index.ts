@@ -42,6 +42,31 @@ app.get("/api/networks", (_req, res) => {
   res.json(NETWORKS_LIST);
 });
 
+// Count of whale transactions since a given timestamp for a network
+app.get("/api/whales/count", async (req, res) => {
+  const since = parseInt(req.query.since as string) || 0;
+  const network = (req.query.network as string) || "eth-mainnet";
+  const count = await dbService.getCountSince(since, network);
+  res.json({ count });
+});
+
+// Like / unlike a whale transaction
+app.post("/api/whales/:hash/like", async (req, res) => {
+  await dbService.likeTransaction(req.params.hash);
+  res.json({ ok: true });
+});
+
+app.delete("/api/whales/:hash/like", async (req, res) => {
+  await dbService.unlikeTransaction(req.params.hash);
+  res.json({ ok: true });
+});
+
+// Get all liked transaction hashes
+app.get("/api/whales/liked", async (_req, res) => {
+  const hashes = await dbService.getLikedHashes();
+  res.json(hashes);
+});
+
 // Get recent whale transactions for a given network
 app.get("/api/whales/recent", async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;

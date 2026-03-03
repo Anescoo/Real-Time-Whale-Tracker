@@ -85,7 +85,7 @@ export function Header({ status, connectedClients, ethPrice, symbol, networks }:
             </div>
           )}
 
-          <div className="header-stat">
+          <div className="header-stat header-stat-clients">
             <span>👥</span>
             <span>{connectedClients}</span>
           </div>

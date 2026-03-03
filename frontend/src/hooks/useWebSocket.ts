@@ -63,7 +63,7 @@ export const useWebSocket = (selectedNetwork = 'eth-mainnet') => {
 
     const fetchHistory = async (network: string) => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/whales/recent?limit=50&network=${network}`);
+        const res = await fetch(`${BACKEND_URL}/api/whales/recent?limit=100&network=${network}`);
         if (res.ok) {
           const data: Transaction[] = await res.json();
           setTransactions(data);
@@ -81,21 +81,25 @@ export const useWebSocket = (selectedNetwork = 'eth-mainnet') => {
     socket.on('connect_error', () => setStatus('error'));
 
     socket.on('whale:transaction', (tx: Transaction) => {
-  // 🔒 Ignore transactions from other networks
-  if (tx.network !== selectedNetworkRef.current) return;
+      // 🔒 Only add to the visible feed for the selected network
+      if (tx.network !== selectedNetworkRef.current) return;
 
-  console.log(
-    `%c🐋 Whale%c ${tx.valueEth.toFixed(4)} ${tx.network ?? ''}` +
-    (tx.valueUsd > 0 ? ` (€${tx.valueUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })})` : '') +
-    ` | block #${tx.blockNumber} | ${tx.from.slice(0, 10)}… → ${tx.to.slice(0, 10)}…`,
-    'color:#ef4444;font-weight:700',
-    'color:inherit'
-  );
+      console.log(
+        `%c🐋 Whale%c ${tx.valueEth.toFixed(4)} ${tx.network ?? ''}` +
+        (tx.valueUsd > 0 ? ` (€${tx.valueUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })})` : '') +
+        ` | block #${tx.blockNumber} | ${tx.from.slice(0, 10)}… → ${tx.to.slice(0, 10)}…`,
+        'color:#ef4444;font-weight:700',
+        'color:inherit'
+      );
 
-  newestHashRef.current = tx.hash;
-  setTransactions(prev => [tx, ...prev].slice(0, 200));
-  window.dispatchEvent(new CustomEvent('new-whale', { detail: tx }));
-});
+      newestHashRef.current = tx.hash;
+      setTransactions(prev => [tx, ...prev].slice(0, 250));
+    });
+
+    // Notification events from ALL networks (regardless of selected network)
+    socket.on('whale:notification', (tx: Transaction) => {
+      window.dispatchEvent(new CustomEvent('new-whale', { detail: tx }));
+    });
 
     socket.on('eth:price', (price: number) => {
       if (price > 0) setEthPrice(price);
@@ -136,7 +140,7 @@ export const useWebSocket = (selectedNetwork = 'eth-mainnet') => {
     setStats(DEFAULT_STATS);
     prevBlocksRef.current = 0;
 
-    fetch(`${BACKEND_URL}/api/whales/recent?limit=50&network=${selectedNetwork}`)
+    fetch(`${BACKEND_URL}/api/whales/recent?limit=100&network=${selectedNetwork}`)
       .then((r) => r.json())
       .then((data: Transaction[]) => setTransactions(data))
       .catch(() => { /* ignore */ });

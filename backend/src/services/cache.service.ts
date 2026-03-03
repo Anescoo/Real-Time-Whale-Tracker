@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { WhaleTransaction } from '../types';
 
-const MAX_CACHED = 100;
+const MAX_CACHED = 250;
 
 function cacheKey(networkId: string): string {
   return `whale:recent:${networkId}`;
